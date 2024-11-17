@@ -1,0 +1,293 @@
+/* Variables
+------------------------------------------ */
+:root {
+  /* Primary theme colors */
+  --primary-color: #2196f3;      /* Blue accent color */
+  --error-color: #ef4444;        /* Red for error/muted states */
+  --bg-primary: #000000;         /* Main background */
+  --text-primary: #fff;          /* Text color */
+
+  /* Control bar dimensions */
+  --control-bar-width: fit-content;
+  --control-bar-max-width: 1200px;
+  --control-bar-height: 80px;
+  --control-bar-show-trigger: 150px;
+
+  /* Animation timing */
+  --transition-default: 0.3s cubic-bezier(0.4, 0, 0.2, 1);    /* Quick transitions */
+  --control-bar-transition: 0.6s cubic-bezier(0.4, 0, 0.2, 1); /* Smooth control reveal */
+}
+
+/* Root container - Main layout wrapper 
+------------------------------------------ */
+.container {
+  height: 100vh;                 /* Full viewport height */
+  position: relative;            /* Positioning context */
+  overflow: hidden;              /* Prevent scrolling */
+  background-color: var(--bg-primary);
+  color: var(--text-primary);
+}
+
+/* Video container - Holds video call component
+------------------------------------------ */
+.videoContainer {
+  height: 100%;
+  width: 100%;
+  position: relative;
+  z-index: 1100;                /* Base layer for content */
+}
+
+/* Video gradient overlay - Adds depth to video 
+------------------------------------------ */
+.videoContainer::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    180deg, 
+    rgba(0, 0, 0, 0.1) 0%, 
+    rgba(0, 0, 0, 0.2) 85%,
+    rgba(0, 0, 0, 0.4) 100%
+  );
+  pointer-events: none;          /* Allow clicks to pass through */
+}
+
+/* Chat panel - Slide-in messaging interface
+------------------------------------------ */
+.chatPanel {
+  position: absolute;
+  right: 0;
+  top: 0;
+  height: 100%;
+  width: 320px;
+  background-color: rgba(255, 255, 255, 0.833);
+  backdrop-filter: blur(10px);   /* Frosted glass effect */
+  border-left: 1px solid rgba(178, 164, 164, 0.842);
+  box-shadow: -4px 0px 15px rgba(201, 191, 191, 0.2);
+  z-index: 1400;                /* Top layer */
+  transition: all var(--transition-default);
+  opacity: 0.8;
+}
+
+/* Movie player - Full screen video player
+------------------------------------------ */
+.moviePlayer {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background-color: rgba(0, 0, 0, 0.95);
+  backdrop-filter: blur(8px);
+  z-index: 1200;                /* Above video, below controls */
+  transition: all var(--transition-default);
+}
+
+/* Control bar container - Houses media controls
+------------------------------------------ */
+.controlBarContainer {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  width: 100%;
+  height: 150px;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  z-index: 1300;                /* Above movie player */
+  pointer-events: none;         /* Allow hover detection */
+}
+
+/* Control bar hover area
+------------------------------------------ */
+.controlBarContainer::after {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  width: 100%;
+  height: 150px;
+  pointer-events: auto;         /* Capture hover events */
+  z-index: -1;
+}
+
+/* Control bar - Main controls interface
+------------------------------------------ */
+.controlBar {
+  position: relative;
+  transform: translateY(200%);  /* Hidden by default */
+  opacity: 0;
+  transition: transform var(--control-bar-transition), 
+              opacity var(--control-bar-transition);
+  margin-bottom: 32px;
+  background-color: rgba(22, 11, 11, 0.85);
+  backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
+  width: var(--control-bar-width);
+  max-width: var(--control-bar-max-width);
+  border-radius: 20px;
+  pointer-events: auto;         /* Enable interaction */
+}
+
+/* Control bar hover animation
+------------------------------------------ */
+.controlBarContainer:hover .controlBar {
+  transform: translateY(0);     /* Slide up on hover */
+  opacity: 1;
+}
+
+/* Wider control bar when movie controls are present */
+.controlBar:has(.movieControls) {
+  --control-bar-width: 90%;
+}
+
+/* Controls layout
+------------------------------------------ */
+.controls {
+  padding: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+}
+
+/* Movie controls section
+------------------------------------------ */
+.movieControls {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  background-color: rgb(35, 35, 35);
+  padding: 8px 16px;
+  border-radius: 16px;
+  backdrop-filter: blur(4px);
+  flex: 1;
+  max-width: 800px;
+  opacity: 0;
+  transform: translateX(-20px);
+  animation: slideIn 0.6s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+  pointer-events: auto;
+}
+
+/* Progress slider styling
+------------------------------------------ */
+.progressSlider {
+  flex: 1;
+  min-width: 200px;
+  max-width: 600px;
+  margin: 0 12px;
+  pointer-events: auto;
+}
+
+/* Slider components */
+.progressSlider :global(.MuiSlider-thumb) {
+  width: 12px;
+  height: 12px;
+  background-color: #fff;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+}
+
+.progressSlider :global(.MuiSlider-track) {
+  height: 4px;
+  background-color: var(--primary-color);
+}
+
+.progressSlider :global(.MuiSlider-rail) {
+  height: 4px;
+  background-color: rgba(255, 255, 255, 0.3);
+}
+
+/* Control buttons
+------------------------------------------ */
+.controls .controlButton {
+  --control-color: #ffffff;
+  --control-bg: rgba(255, 255, 255, 0.1);
+  color: var(--control-color);
+  background-color: var(--control-bg);
+  border-radius: 50%;
+  width: 40px;
+  height: 40px;
+  padding: 8px;
+  transition: all 0.2s ease;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: auto;
+  z-index: 1;
+}
+
+/* Button states */
+.controls .controlButton:hover {
+  --control-bg: rgba(255, 255, 255, 0.2);
+  transform: scale(1.1);        /* Subtle grow effect */
+}
+
+.controls .controlButton:active {
+  transform: scale(0.95);       /* Click feedback */
+}
+
+/* Button icons */
+.controls .controlButton svg {
+  width: 24px;
+  height: 24px;
+  fill: currentColor;
+}
+
+/* Muted state */
+.controls .controlButton.muted {
+  --control-color: var(--error-color);
+  --control-bg: rgba(239, 68, 68, 0.1);
+}
+
+.controls .controlButton.muted svg {
+  color: var(--error-color);
+}
+
+/* Active state */
+.controls .controlButton.activeButton {
+  --control-color: var(--primary-color);
+  --control-bg: rgba(59, 130, 246, 0.1);
+}
+
+.controls .controlButton.activeButton svg {
+  color: var(--primary-color);
+}
+
+/* Focus state */
+.controls .controlButton:focus-visible {
+  outline: 2px solid var(--control-color);
+  outline-offset: 2px;
+}
+
+/* Disabled state */
+.controls .controlButton:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  pointer-events: none;
+}
+
+/* Animations
+------------------------------------------ */
+@keyframes slideIn {
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+.movieControls.exit {
+  animation: slideOut 0.6s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+}
+
+@keyframes slideOut {
+  from {
+    opacity: 1;
+    transform: translateX(0);
+  }
+  to {
+    opacity: 0;
+    transform: translateX(-20px);
+  }
+}

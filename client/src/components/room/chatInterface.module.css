@@ -1,0 +1,203 @@
+/* Variables
+------------------------------------------ */
+:root {
+  /* Core color palette - Uses rgba for opacity control */
+  --primary-color: #2196f3;      /* Brand color for primary actions/highlights */
+  --bg-color: rgba(41, 41, 41, 0.95);  /* Main chat background with transparency */
+  --header-bg: rgba(255, 255, 255, 0.1);  /* Subtle header background */
+  --border-color: rgba(255, 255, 255, 0.1);  /* Soft borders for separation */
+  --text-light: #ffffff;         /* Primary text color */
+  --text-secondary: rgba(255, 255, 255, 0.7);  /* Secondary/muted text */
+  --message-bg: rgba(49, 49, 49, 0.1);  /* Message bubble background */
+  --input-bg: rgba(255, 255, 255, 0.05);  /* Input field background */
+  --avatar-bg: rgba(35, 34, 34, 0.1);  /* Avatar background color */
+  --border-hover: rgba(255, 255, 255, 0.3);  /* Border color on hover */
+
+  /* Consistent spacing scale */
+  --spacing-2: 8px;   /* Small gaps and padding */
+  --spacing-4: 16px;  /* Larger component spacing */
+  
+  /* Rounded corners */
+  --border-radius: 8px;
+  
+  /* Animation timing */
+  --transition-default: 0.2s ease;  /* Smooth interactions */
+}
+
+/* Layout Components - Main structure of the chat interface
+------------------------------------------ */
+.chatContainer {
+  height: 100%;          /* Full height container */
+  display: flex;
+  flex-direction: column;  /* Stack children vertically */
+  background-color: var(--bg-color);
+}
+
+.chatHeader {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--spacing-4);
+  background-color: rgb(41, 41, 41);
+  backdrop-filter: blur(8px);  /* Frosted glass effect */
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);  /* Subtle depth */
+}
+
+/* Message Components - Styling for the chat messages area
+------------------------------------------ */
+.messageContainer {
+  flex: 1;              /* Takes remaining vertical space */
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-2);
+  padding: var(--spacing-4);
+  overflow-y: auto;     /* Enables scrolling */
+  background: transparent;
+  /* Custom scrollbar styling */
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
+}
+
+/* Webkit scrollbar customization */
+.messageContainer::-webkit-scrollbar {
+  width: 6px;  /* Thin scrollbar */
+}
+
+.messageContainer::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.messageContainer::-webkit-scrollbar-thumb {
+  background-color: rgba(255, 255, 255, 0.2);
+  border-radius: 3px;
+}
+
+/* Message wrapper - Contains individual messages */
+.messageWrapper {
+  display: flex;
+  margin-bottom: var(--spacing-2);
+  animation: fadeIn var(--transition-default);  /* Animate new messages */
+}
+
+/* Message content layout */
+.messageContent {
+  display: flex;
+  gap: var(--spacing-2);
+  max-width: 80%;  /* Prevent messages from being too wide */
+}
+
+/* User avatar styling */
+.avatar {
+  width: 32px;
+  height: 32px;
+  font-size: 14px;
+  background-color: var(--avatar-bg);
+}
+
+/* Individual message bubble */
+.message {
+  padding: 8px 12px;
+  border-radius: 12px;
+  position: relative;
+  word-break: break-word;  /* Prevent overflow with long words */
+  transition: transform var(--transition-default);
+}
+
+/* Hover effect for messages */
+.message:hover {
+  transform: translateY(-1px);  /* Slight lift effect */
+}
+
+/* Message Types - Different styles for sent vs received
+------------------------------------------ */
+.sentMessage {
+  justify-content: flex-end;  /* Align sent messages to right */
+}
+
+.sentMessage .message {
+  background-color: var(--primary-color);
+  color: var(--text-light);
+  border-bottom-right-radius: 4px;  /* Speech bubble shape */
+}
+
+.receivedMessage .message {
+  background-color: var(--message-bg);
+  color: var(--text-light);
+  border-bottom-left-radius: 4px;  /* Speech bubble shape */
+}
+
+/* Typography - Text styling for messages
+------------------------------------------ */
+.senderName {
+  display: block;
+  margin-bottom: 4px;
+  color: var(--text-secondary);
+  font-size: 0.75rem;  /* Smaller text for names */
+}
+
+.timestamp {
+  float: right;
+  margin-left: var(--spacing-2);
+  color: var(--text-secondary);
+  font-size: 0.75rem;  /* Smaller text for timestamp */
+}
+
+/* Input Components - Message input area
+------------------------------------------ */
+.inputContainer {
+  display: flex;
+  align-items: flex-end;
+  gap: var(--spacing-2);
+  padding: var(--spacing-4);
+  background-color: var(--input-bg);
+  border-top: 1px solid var(--border-color);
+}
+
+/* Input field styling */
+.input {
+  background-color: var(--input-bg);
+  border-radius: var(--border-radius);
+}
+
+/* Material-UI input customization */
+.input :global(.MuiOutlinedInput-root) {
+  color: var(--text-light);
+  transition: border-color var(--transition-default);
+}
+
+.input :global(.MuiOutlinedInput-notchedOutline) {
+  border-color: var(--border-color);
+}
+
+.input:hover :global(.MuiOutlinedInput-notchedOutline) {
+  border-color: var(--border-hover);
+}
+
+/* Send button styling */
+.sendButton {
+  padding: var(--spacing-2);
+  color: var(--primary-color);
+  transition: transform var(--transition-default),
+              opacity var(--transition-default);
+}
+
+.sendButton:hover:not(:disabled) {
+  transform: scale(1.1);  /* Grow effect on hover */
+}
+
+.sendButton:disabled {
+  opacity: 0.5;  /* Fade when disabled */
+}
+
+/* Animations - Message appear animation
+------------------------------------------ */
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(10px);  /* Start below final position */
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);  /* Fade in and slide up */
+  }
+}

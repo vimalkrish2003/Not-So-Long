@@ -1,0 +1,32 @@
+.container {
+    min-height: 100vh;
+    padding: 2rem 0;
+  }
+  
+  .header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 2rem;
+  }
+  
+  .welcomeText {
+    color: #1976d2;
+    font-weight: 500;
+  }
+  
+  .buttonContainer {
+    display: flex;
+    gap: 1rem;
+    justify-content: center;
+    margin: 2rem 0;
+  }
+  
+  .dialogContent {
+    padding: 1rem;
+    min-width: 300px;
+  }
+  
+  .dialogActions {
+    padding: 1rem;
+  }
