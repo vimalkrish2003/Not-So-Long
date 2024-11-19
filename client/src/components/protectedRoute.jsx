@@ -1,17 +1,34 @@
-import {Navigate,useLocation} from 'react-router-dom';
-import {useAuth} from '../contexts/authUserContext';
+// src/components/protectedRoute.jsx
+import { Navigate } from 'react-router-dom';
+import PropTypes from 'prop-types';
+import { useAuth } from '../contexts/authUserContext';
+import { CircularProgress, Box } from '@mui/material';
 
-const ProtectedRoute=({children})=>{
-    const {user,loading}=useAuth();
-    const location=useLocation();
+const ProtectedRoute = ({ children }) => {
+  const { isAuthenticated, loading } = useAuth();
 
-    if(loading){
-        return <p>Loading...</p>
-    }
-    if(!user){
-        return <Navigate to={{pathname:'/',state:{from:location}}}/>
-    }
-    return children;
-}
+  if (loading) {
+    return (
+      <Box
+        display="flex"
+        justifyContent="center"
+        alignItems="center"
+        minHeight="100vh"
+      >
+        <CircularProgress />
+      </Box>
+    );
+  }
+
+  if (!isAuthenticated) {
+    return <Navigate to="/" replace />;
+  }
+
+  return children;
+};
+
+ProtectedRoute.propTypes = {
+  children: PropTypes.node.isRequired,
+};
 
 export default ProtectedRoute;

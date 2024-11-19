@@ -1,4 +1,4 @@
-import { useState, useRef } from "react";
+import { useState, useRef, useCallback } from "react";
 import { useParams } from "react-router-dom";
 import { Box, Slide, Paper, IconButton, Stack, Slider } from "@mui/material";
 // Material UI Icons
@@ -32,31 +32,45 @@ const RoomPage = () => {
   const { roomId } = useParams();
   // Ref for controlling MoviePlayer component
   const moviePlayerRef = useRef(null);
+  const timeRef=useRef(null);
 
   // State Management
-  const [isChatOpen, setIsChatOpen] = useState(false);        // Controls chat panel visibility
-  const [isPlaying, setIsPlaying] = useState(false);          // Overall movie playing state
-  const [isMicOn, setIsMicOn] = useState(true);              // Microphone state
-  const [isVideoOn, setIsVideoOn] = useState(true);          // Camera state
+  const [isChatOpen, setIsChatOpen] = useState(false); // Controls chat panel visibility
+  const [isMovieUploaded, setIsMovieUploaded] = useState(false); // Movie upload state
+  const [isMicOn, setIsMicOn] = useState(true); // Microphone state
+  const [isVideoOn, setIsVideoOn] = useState(true); // Camera state
+  const [isControlBarVisible, setControlBarVisible] = useState(true);
   const [isMovieModeActive, setIsMovieModeActive] = useState(false); // Movie mode toggle
-  const [movieProgress, setMovieProgress] = useState(0);      // Movie progress (0-100)
+  const [movieProgress, setMovieProgress] = useState(0); // Movie progress (0-100)
   const [isMoviePlaying, setIsMoviePlaying] = useState(false); // Movie play/pause state
-
   // Toggle Handlers
   const toggleChat = () => setIsChatOpen(!isChatOpen);
   const toggleMic = () => setIsMicOn(!isMicOn);
   const toggleVideo = () => setIsVideoOn(!isVideoOn);
   const toggleMovieMode = () => setIsMovieModeActive(!isMovieModeActive);
-  
+
   /**
    * Handles movie playback toggle and communicates with MoviePlayer component
    */
   const toggleMoviePlayback = () => {
     setIsMoviePlaying(!isMoviePlaying);
     if (moviePlayerRef.current) {
-      moviePlayerRef.current.handlePlaybackToggle();
+      //moviePlayerRef.current.handlePlaybackToggle();
     }
   };
+
+  const handleMouseEnter = useCallback(() => {
+    if(timeRef.current){
+      clearTimeout(timeRef.current);
+    }
+
+    setControlBarVisible(true);
+  },[]);
+  const handleMouseLeave = useCallback(() => {
+    timeRef.current=setTimeout(()=>{
+      setControlBarVisible(false);
+    },1000);
+  },[]);
 
   /**
    * Handles seeking in the movie timeline
@@ -66,20 +80,20 @@ const RoomPage = () => {
   const handleSeek = (_, value) => {
     setMovieProgress(value);
     if (moviePlayerRef.current) {
-      moviePlayerRef.current.handleSeek(value);
+      // moviePlayerRef.current.handleSeek(value);
     }
   };
 
   // Movie Control Handlers
   const handleFastForward = () => {
     if (moviePlayerRef.current) {
-      moviePlayerRef.current.handleFastForward();
+      // moviePlayerRef.current.handleFastForward();
     }
   };
 
   const handleRewind = () => {
     if (moviePlayerRef.current) {
-      moviePlayerRef.current.handleRewind();
+      //moviePlayerRef.current.handleRewind();
     }
   };
 
@@ -91,15 +105,24 @@ const RoomPage = () => {
     const input = document.createElement("input");
     input.type = "file";
     input.accept = "video/*";
+
     input.onchange = (e) => {
       const file = e.target.files[0];
-      if (file) {
-        setIsPlaying(true);
-        if (moviePlayerRef.current) {
-          moviePlayerRef.current.handleFileUpload(file);
-        }
+      if (!file) return;
+
+      // Check if file is video type
+      if (!file.type.startsWith("video/")) {
+        alert("Please select a valid video file");
+        return;
+      }
+
+      // Proceed with valid video file
+      setIsMovieUploaded(true);
+      if (moviePlayerRef.current) {
+        moviePlayerRef.current.handleFileUpload(file);
       }
     };
+
     input.click();
   };
 
@@ -115,13 +138,13 @@ const RoomPage = () => {
         />
       </Box>
 
-      {/* Movie Player Section - Only shown in movie mode */}
-      {isMovieModeActive && (
+      {/* Movie Player Section - Currently set as Disabled always for developement. Do Not Change this Code */}
+      {false && (
         <Box className={styles.moviePlayer}>
           <MoviePlayer
             ref={moviePlayerRef}
             roomId={roomId}
-            onPlayingChange={setIsPlaying}
+            onPlayingChange={setIsMovieUploaded}
             isPlaying={isMoviePlaying}
             onProgressChange={setMovieProgress}
           />
@@ -136,116 +159,138 @@ const RoomPage = () => {
       </Slide>
 
       {/* Control Bar */}
-      <Box className={styles.controlBarContainer}>
-        <Paper elevation={3} className={`${styles.controlBar} controlBar`}>
-          <Stack
-            direction="row"
-            spacing={2}
-            className={styles.controls}
-            alignItems="center"
-          >
-            {/* Video Call Controls */}
-            <>
+      <Box
+        className={styles.controlBarContainer}
+        onMouseEnter={handleMouseEnter}
+        onMouseLeave={handleMouseLeave}
+        role="toolbar"
+        aria-label="Control Bar"
+      >
+        <Slide
+        direction="up"
+        in={isControlBarVisible}
+        timeout={300}
+        mountOnEnter
+        unmountOnExit
+        >
+          <Paper elevation={3} className={`${styles.controlBar} controlBar`}>
+            <Stack
+              direction="row"
+              spacing={2}
+              className={styles.controls}
+              alignItems="center"
+            >
+              {/* Video Call Controls */}
+              <>
+                <IconButton
+                  onClick={toggleMic}
+                  className={`${styles.controlButton} ${
+                    !isMicOn ? styles.muted : ""
+                  }`}
+                  size="large"
+                >
+                  {isMicOn ? <MicIcon /> : <MicOffIcon />}
+                </IconButton>
+
+                <IconButton
+                  onClick={toggleVideo}
+                  className={`${styles.controlButton} ${
+                    !isVideoOn ? styles.muted : ""
+                  }`}
+                  size="large"
+                >
+                  {isVideoOn ? <VideocamIcon /> : <VideocamOffIcon />}
+                </IconButton>
+              </>
+
+              {/* Chat Toggle */}
               <IconButton
-                onClick={toggleMic}
-                className={`${styles.controlButton} ${!isMicOn ? styles.muted : ""}`}
+                onClick={toggleChat}
+                className={`${styles.controlButton} ${
+                  isChatOpen ? styles.activeButton : ""
+                }`}
                 size="large"
               >
-                {isMicOn ? <MicIcon /> : <MicOffIcon />}
+                <ChatIcon />
               </IconButton>
 
+              {/* Movie Mode Toggle */}
               <IconButton
-                onClick={toggleVideo}
-                className={`${styles.controlButton} ${!isVideoOn ? styles.muted : ""}`}
+                onClick={toggleMovieMode}
+                className={`${styles.controlButton} ${
+                  isMovieModeActive ? styles.activeButton : ""
+                }`}
                 size="large"
               >
-                {isVideoOn ? <VideocamIcon /> : <VideocamOffIcon />}
+                <MovieIcon />
               </IconButton>
-            </>
 
-            {/* Chat Toggle */}
-            <IconButton
-              onClick={toggleChat}
-              className={`${styles.controlButton} ${isChatOpen ? styles.activeButton : ""}`}
-              size="large"
-            >
-              <ChatIcon />
-            </IconButton>
-
-            {/* Movie Mode Toggle */}
-            <IconButton
-              onClick={toggleMovieMode}
-              className={`${styles.controlButton} ${isMovieModeActive ? styles.activeButton : ""}`}
-              size="large"
-            >
-              <MovieIcon />
-            </IconButton>
-
-            {/* Movie Controls - Only shown in movie mode */}
-            {isMovieModeActive && (
-              <Box
-                className={styles.movieControls}
-                onClick={(e) => e.stopPropagation()}
-              >
-                <IconButton
-                  onClick={handleUploadMovie}
-                  className={styles.controlButton}
-                  size="large"
+              {/* Movie Controls - Only shown in movie mode */}
+              {isMovieModeActive && (
+                <Box
+                  className={styles.movieControls}
+                  onClick={(e) => e.stopPropagation()}
                 >
-                  <CloudUploadIcon />
-                </IconButton>
+                  <IconButton
+                    onClick={handleUploadMovie}
+                    className={styles.controlButton}
+                    size="large"
+                  >
+                    <CloudUploadIcon />
+                  </IconButton>
 
-                <IconButton
-                  onClick={handleRewind}
-                  className={styles.controlButton}
-                  size="large"
-                >
-                  <FastRewindIcon />
-                </IconButton>
+                  <IconButton
+                    onClick={handleRewind}
+                    className={styles.controlButton}
+                    size="large"
+                  >
+                    <FastRewindIcon />
+                  </IconButton>
 
-                <IconButton
-                  onClick={toggleMoviePlayback}
-                  className={styles.controlButton}
-                  size="large"
-                >
-                  {isMoviePlaying ? <PauseIcon /> : <PlayArrowIcon />}
-                </IconButton>
+                  <IconButton
+                    onClick={toggleMoviePlayback}
+                    className={styles.controlButton}
+                    size="large"
+                  >
+                    {isMoviePlaying ? <PauseIcon /> : <PlayArrowIcon />}
+                  </IconButton>
 
-                <IconButton
-                  onClick={handleFastForward}
-                  className={styles.controlButton}
-                  size="large"
-                >
-                  <FastForwardIcon />
-                </IconButton>
+                  <IconButton
+                    onClick={handleFastForward}
+                    className={styles.controlButton}
+                    size="large"
+                  >
+                    <FastForwardIcon />
+                  </IconButton>
 
-                {/* Progress Slider */}
-                <Slider
-                  value={movieProgress}
-                  onChange={handleSeek}
-                  className={styles.progressSlider}
-                  min={0}
-                  max={100}
-                  step={1}
-                  disabled={!isPlaying}
-                  sx={{
-                    "& .MuiSlider-thumb": {
-                      width: 12,
-                      height: 12,
-                      backgroundColor: "#fff",
-                    },
-                    "& .MuiSlider-track": {
-                      backgroundColor: "primary.main",
-                    },
-                    "& .MuiSlider-rail": {
-                      backgroundColor: "rgba(255, 255, 255, 0.3)",
-                    },
-                  }}
-                />
-              </Box>
-            )}
-          </Stack>
-        </Paper>
+                  {/* Progress Slider */}
+                  <Slider
+                    value={movieProgress}
+                    onChange={handleSeek}
+                    className={styles.progressSlider}
+                    min={0}
+                    max={100}
+                    step={1}
+                    disabled={!isMovieUploaded}
+                    sx={{
+                      "& .MuiSlider-thumb": {
+                        width: 12,
+                        height: 12,
+                        backgroundColor: "#fff",
+                      },
+                      "& .MuiSlider-track": {
+                        backgroundColor: "primary.main",
+                      },
+                      "& .MuiSlider-rail": {
+                        backgroundColor: "rgba(255, 255, 255, 0.3)",
+                      },
+                    }}
+                  />
+                </Box>
+              )}
+            </Stack>
+          </Paper>
+        </Slide>
       </Box>
     </Box>
   );

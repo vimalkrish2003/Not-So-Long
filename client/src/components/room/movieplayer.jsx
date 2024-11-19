@@ -1,10 +1,13 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { Box, CircularProgress, Alert } from '@mui/material';
 import { socket } from '../../services/socket';
-
 /**
  * Video quality configurations for adaptive streaming
  * Adjusts resolution and bitrate based on network conditions
+ * 
+ * Need to add functions:
+ * handlePlayBackToggle
+ * 
  */
 const QUALITIES = {
   HIGH: { bitrate: 2000000, width: 1920, height: 1080 },   // Full HD
@@ -41,6 +44,7 @@ const MoviePlayer = ({
   onProgressChange,
   onDurationChange
 }) => {
+  
   // Refs for DOM elements and connection management
   const videoRef = useRef(null);           // Video element reference
   const peerConnectionRef = useRef(null);   // WebRTC peer connection

@@ -22,11 +22,12 @@ const HomePage = () => {
     try {
       setIsLoading(true);
       setError(null);
-      const data = await authService.googleLogin(credentialResponse.credential);
-      login(data.user);
+      const user = await authService.googleLogin(credentialResponse.credential);
+      await login(user); 
       navigate("/dash");
     } catch (err) {
-      setError(err.message);
+      console.error('Login error:', err);
+      setError(err.message || 'Failed to login');
     } finally {
       setIsLoading(false);
     }

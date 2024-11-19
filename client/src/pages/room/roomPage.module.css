@@ -90,52 +90,29 @@
   bottom: 0;
   left: 0;
   width: 100%;
-  height: 150px;
+  height: var(--control-bar-show-trigger);
   display: flex;
   align-items: flex-end;
   justify-content: center;
-  z-index: 1300;                /* Above movie player */
-  pointer-events: none;         /* Allow hover detection */
+  z-index: 1300;
 }
 
-/* Control bar hover area
------------------------------------------- */
-.controlBarContainer::after {
-  content: '';
-  position: absolute;
-  bottom: 0;
-  left: 0;
-  width: 100%;
-  height: 150px;
-  pointer-events: auto;         /* Capture hover events */
-  z-index: -1;
-}
 
 /* Control bar - Main controls interface
 ------------------------------------------ */
 .controlBar {
-  position: relative;
-  transform: translateY(200%);  /* Hidden by default */
-  opacity: 0;
-  transition: transform var(--control-bar-transition), 
-              opacity var(--control-bar-transition);
+  width: var(--control-bar-width);
+  max-width: var(--control-bar-max-width);
   margin-bottom: 32px;
   background-color: rgba(22, 11, 11, 0.85);
   backdrop-filter: blur(10px);
   border: 1px solid rgba(255, 255, 255, 0.1);
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
-  width: var(--control-bar-width);
-  max-width: var(--control-bar-max-width);
   border-radius: 20px;
-  pointer-events: auto;         /* Enable interaction */
+  pointer-events: auto;
 }
 
-/* Control bar hover animation
------------------------------------------- */
-.controlBarContainer:hover .controlBar {
-  transform: translateY(0);     /* Slide up on hover */
-  opacity: 1;
-}
+
+
 
 /* Wider control bar when movie controls are present */
 .controlBar:has(.movieControls) {

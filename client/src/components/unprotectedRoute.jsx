@@ -1,20 +1,34 @@
-import { Navigate, useLocation } from 'react-router-dom';
-import { useAuth } from '../contexts/authUserContext';  
+// src/components/unprotectedRoute.jsx
+import { Navigate } from 'react-router-dom';
+import PropTypes from 'prop-types';
+import { useAuth } from '../contexts/authUserContext';
+import { CircularProgress, Box } from '@mui/material';
 
 const UnprotectedRoute = ({ children }) => {
-  const { user, loading } = useAuth();
-  const location = useLocation();
-  
+  const { isAuthenticated, loading } = useAuth();
+
   if (loading) {
-    return <div>Loading...</div>;
+    return (
+      <Box
+        display="flex"
+        justifyContent="center"
+        alignItems="center"
+        minHeight="100vh"
+      >
+        <CircularProgress />
+      </Box>
+    );
   }
 
-  // If user is already logged in, redirect to /dash
-  if (user) {
-    return <Navigate to={'/dash'} replace />;
+  if (isAuthenticated) {
+    return <Navigate to="/dash" replace />;
   }
 
   return children;
+};
+
+UnprotectedRoute.propTypes = {
+  children: PropTypes.node.isRequired,
 };
 
 export default UnprotectedRoute;
