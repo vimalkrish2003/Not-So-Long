@@ -3,7 +3,7 @@
 // authUserContext.jsx
 import { createContext, useContext, useState, useEffect } from "react";
 import PropTypes from "prop-types";
-import authService from "../services/api/auth";
+import authService from "../services/auth";
 
 const AuthContext = createContext(null);
 

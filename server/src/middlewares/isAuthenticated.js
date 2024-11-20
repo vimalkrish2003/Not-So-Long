@@ -4,7 +4,6 @@ const User = require('../models/userModel');
 const isAuthenticated = async (req, res, next) => {
     try {
         const authHeader = req.headers.authorization;
-        console.log("Auth header:", authHeader);
         if (!authHeader?.startsWith('Bearer')) {
             return res.status(401).json({ message: "Invalid token format" });
         }

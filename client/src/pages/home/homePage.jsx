@@ -1,7 +1,7 @@
 import { GoogleLogin } from "@react-oauth/google";
 import { useState } from "react";
 import { useAuth } from "../../contexts/authUserContext";
-import { authService } from "../../services/api/auth";
+import { authService } from "../../services/auth";
 import { useNavigate } from "react-router-dom";
 import { 
   Container, 

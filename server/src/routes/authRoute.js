@@ -68,7 +68,6 @@ router.post("/google", async (req, res) => {
 router.get("/verify", isAuthenticated, (req, res) => {
   // isAuthenticated has already done all necessary checks
   // We just need to return the success response with user data
-  console.log("User verified:", req.user.email);
   res.json({
     valid: true,
     user: {

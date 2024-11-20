@@ -1,7 +1,11 @@
-import { useState, useRef, useCallback } from "react";
-import { useParams } from "react-router-dom";
+import { useState, useRef, useCallback, useEffect } from "react";
+import { useParams, useLocation, useNavigate } from "react-router-dom";
 import { Box, Slide, Paper, IconButton, Stack, Slider } from "@mui/material";
+import { useSnackbar } from "notistack";
+import { useAuth } from "../../contexts/authUserContext";
+import roomServices from "../../services/roomServices";
 // Material UI Icons
+import CircularProgress from "@mui/material/CircularProgress";
 import ChatIcon from "@mui/icons-material/Chat";
 import MicIcon from "@mui/icons-material/Mic";
 import MicOffIcon from "@mui/icons-material/MicOff";
@@ -30,10 +34,18 @@ import styles from "./roomPage.module.css";
  */
 const RoomPage = () => {
   const { roomId } = useParams();
+  const { user } = useAuth();
+  const location = useLocation();
+  const navigate = useNavigate();
+  const { enqueueSnackbar } = useSnackbar();
   // Ref for controlling MoviePlayer component
   const moviePlayerRef = useRef(null);
-  const timeRef=useRef(null);
+  const timeRef = useRef(null);
 
+  //Important State Management like host and other things
+  const [isHost, setIsHost] = useState(location.state?.isHost || false);
+  const [roomData, setRoomData] = useState(location.state?.roomData || null);
+  const [hasJoinedRoom, setHasJoinedRoom] = useState(false);
   // State Management
   const [isChatOpen, setIsChatOpen] = useState(false); // Controls chat panel visibility
   const [isMovieUploaded, setIsMovieUploaded] = useState(false); // Movie upload state
@@ -43,11 +55,57 @@ const RoomPage = () => {
   const [isMovieModeActive, setIsMovieModeActive] = useState(false); // Movie mode toggle
   const [movieProgress, setMovieProgress] = useState(0); // Movie progress (0-100)
   const [isMoviePlaying, setIsMoviePlaying] = useState(false); // Movie play/pause state
+  const [isLoading, setIsLoading] = useState(true); // Loading state
   // Toggle Handlers
   const toggleChat = () => setIsChatOpen(!isChatOpen);
   const toggleMic = () => setIsMicOn(!isMicOn);
   const toggleVideo = () => setIsVideoOn(!isVideoOn);
   const toggleMovieMode = () => setIsMovieModeActive(!isMovieModeActive);
+
+  // Initialization effect
+  useEffect(() => {
+    const initializeRoom = async () => {
+      try {
+        if (!location.state?.roomData) {
+          try {
+            const response = await roomServices.joinRoom(roomId);
+            setRoomData(response);
+            setIsHost(response.host === user.id);
+            setHasJoinedRoom(true); // Set joined state
+          } catch (error) {
+            if (error.message.includes("Room not found")) {
+              const createResponse = await roomServices.createRoom();
+              setRoomData(createResponse);
+              setIsHost(true);
+              setHasJoinedRoom(true); // Set joined state
+            } else {
+              throw error;
+            }
+          }
+        } else {
+          setHasJoinedRoom(true); // Set joined state for direct navigation
+        }
+      } catch (error) {
+        enqueueSnackbar(error.message || "Failed to initialize room", {
+          variant: "error",
+        });
+        navigate("/dash");
+      } finally {
+        setIsLoading(false);
+      }
+    };
+  
+    initializeRoom();
+  }, [location.state, navigate, user.id, enqueueSnackbar, roomId]);
+  
+  // Modify cleanup effect
+  useEffect(() => {
+    return () => {
+      if (roomId && hasJoinedRoom) { // Only leave if we've joined
+        roomServices.leaveRoom(roomId).catch(console.error);
+      }
+    };
+  }, [roomId, hasJoinedRoom]);
 
   /**
    * Handles movie playback toggle and communicates with MoviePlayer component
@@ -60,17 +118,17 @@ const RoomPage = () => {
   };
 
   const handleMouseEnter = useCallback(() => {
-    if(timeRef.current){
+    if (timeRef.current) {
       clearTimeout(timeRef.current);
     }
 
     setControlBarVisible(true);
-  },[]);
+  }, []);
   const handleMouseLeave = useCallback(() => {
-    timeRef.current=setTimeout(()=>{
+    timeRef.current = setTimeout(() => {
       setControlBarVisible(false);
-    },1000);
-  },[]);
+    }, 1000);
+  }, []);
 
   /**
    * Handles seeking in the movie timeline
@@ -126,6 +184,20 @@ const RoomPage = () => {
     input.click();
   };
 
+  // Loading State
+  if (isLoading) {
+    return (
+      <Box
+        className={styles.container}
+        display="flex"
+        justifyContent="center"
+        alignItems="center"
+      >
+        <CircularProgress />
+      </Box>
+    );
+  }
+
   return (
     <Box className={styles.container}>
       {/* Video Call Section */}
@@ -167,11 +239,11 @@ const RoomPage = () => {
         aria-label="Control Bar"
       >
         <Slide
-        direction="up"
-        in={isControlBarVisible}
-        timeout={300}
-        mountOnEnter
-        unmountOnExit
+          direction="up"
+          in={isControlBarVisible}
+          timeout={300}
+          mountOnEnter
+          unmountOnExit
         >
           <Paper elevation={3} className={`${styles.controlBar} controlBar`}>
             <Stack
