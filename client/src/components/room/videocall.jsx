@@ -5,7 +5,7 @@ import { socket } from "../../services/socket";
 /**
  * VideoCall Component
  * Handles WebRTC video call functionality with support for movie mode.
- * 
+ *
  * @param {Object} props
  * @param {string} props.roomId - Unique identifier for the video call room
  * @param {boolean} props.isMicOn - Microphone enabled state
@@ -13,56 +13,113 @@ import { socket } from "../../services/socket";
  * @param {boolean} props.isMovieModeActive - Movie mode state
  */
 const VideoCall = ({ roomId, isMicOn, isVideoOn, isMovieModeActive }) => {
-  // Video element references
-  const localVideoRef = useRef(null);    // Local camera feed
-  const remoteVideoRef = useRef(null);   // Remote user's feed
-  const peerConnection = useRef(null);    // WebRTC connection
+  const localVideoRef = useRef(null);
+  const remoteVideoRef = useRef(null);
+  const peerConnection = useRef(null);
+  const mediaStreamRef = useRef(null);
 
   useEffect(() => {
-    /**
-     * Initialize WebRTC connection and media streams
-     * Sets up peer connection, media tracks, and event handlers
-     */
+    let mounted = true;
+
+    const cleanup = () => {
+      // First release all media tracks
+      if (mediaStreamRef.current) {
+        mediaStreamRef.current.getTracks().forEach(track => {
+          track.enabled = false;
+          track.stop();
+        });
+        mediaStreamRef.current = null;
+      }
+
+      // Close peer connection
+      if (peerConnection.current) {
+        try {
+          peerConnection.current.getSenders().forEach(sender => {
+            if (sender.track) {
+              sender.track.enabled = false;
+              sender.track.stop();
+            }
+          });
+          peerConnection.current.getReceivers().forEach(receiver => {
+            if (receiver.track) {
+              receiver.track.enabled = false;
+              receiver.track.stop();
+            }
+          });
+          peerConnection.current.close();
+        } catch (err) {
+          console.error('Error during peer connection cleanup:', err);
+        }
+        peerConnection.current = null;
+      }
+
+      // Clear video elements
+      if (localVideoRef.current) {
+        localVideoRef.current.srcObject = null;
+      }
+      if (remoteVideoRef.current) {
+        remoteVideoRef.current.srcObject = null;
+      }
+
+      // Remove socket listeners
+      socket.off("join-room");
+      socket.off("ice-candidate");
+    };
+
     const initializeWebRTC = async () => {
       try {
-        // Get local media stream (camera/mic)
-        const stream = await navigator.mediaDevices.getUserMedia({
-          video: isVideoOn,
-          audio: isMicOn,
-        });
-        localVideoRef.current.srcObject = stream;
+        if (!mounted) return;
+        
+        if (isVideoOn || isMicOn) {
+          // Get user media
+          const stream = await navigator.mediaDevices.getUserMedia({
+            video: isVideoOn,
+            audio: isMicOn,
+          });
 
-        // Initialize WebRTC peer connection
-        peerConnection.current = new RTCPeerConnection();
-
-        // Add local media tracks to peer connection
-        stream.getTracks().forEach((track) => {
-          peerConnection.current.addTrack(track, stream);
-        });
-
-        // Handle incoming remote media tracks
-        peerConnection.current.ontrack = (event) => {
-          remoteVideoRef.current.srcObject = event.streams[0];
-        };
-
-        // Handle ICE candidates for connection negotiation
-        peerConnection.current.onicecandidate = (event) => {
-          if (event.candidate) {
-            socket.emit("ice-candidate", {
-              roomId,
-              candidate: event.candidate,
-            });
+          if (!mounted) {
+            stream.getTracks().forEach(track => track.stop());
+            return;
           }
-        };
 
-        // Join the video call room
-        socket.emit("join-room", roomId);
+          mediaStreamRef.current = stream;
+          
+          if (localVideoRef.current) {
+            localVideoRef.current.srcObject = stream;
+          }
+
+          // Setup peer connection
+          peerConnection.current = new RTCPeerConnection();
+          
+          stream.getTracks().forEach(track => {
+            peerConnection.current.addTrack(track, stream);
+          });
+
+          peerConnection.current.ontrack = (event) => {
+            if (remoteVideoRef.current && mounted) {
+              remoteVideoRef.current.srcObject = event.streams[0];
+            }
+          };
+
+          peerConnection.current.onicecandidate = (event) => {
+            if (event.candidate && mounted) {
+              socket.emit("ice-candidate", { roomId, candidate: event.candidate });
+            }
+          };
+
+          socket.emit("join-room", roomId);
+        }
       } catch (error) {
         console.error("Error accessing media devices:", error);
       }
     };
 
     initializeWebRTC();
+
+    return () => {
+      mounted = false;
+      cleanup();
+    };
   }, [roomId, isMicOn, isVideoOn]);
 
   return (

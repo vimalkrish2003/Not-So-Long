@@ -94,14 +94,13 @@ const RoomPage = () => {
         setIsLoading(false);
       }
     };
-  
+
     initializeRoom();
   }, [location.state, navigate, user.id, enqueueSnackbar, roomId]);
-  
-  // Modify cleanup effect
+
   useEffect(() => {
     return () => {
-      if (roomId && hasJoinedRoom) { // Only leave if we've joined
+      if (roomId && hasJoinedRoom) {
         roomServices.leaveRoom(roomId).catch(console.error);
       }
     };
