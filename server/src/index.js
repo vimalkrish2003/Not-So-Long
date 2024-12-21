@@ -2,10 +2,12 @@ const http = require('http');
 const dotenv = require('dotenv');
 const connectDB = require('./configs/db');
 const configureExpress = require('./configs/express');
-const initializeSocket = require('./configs/socket');
+const initializeSocket = require('./configs/websocket');
+const dns = require('dns');
 const mongoose = require('mongoose');
 
 dotenv.config();
+dns.setDefaultResultOrder('ipv4first'); // Force DNS resolution to use IPv4
 
 const app = configureExpress();
 const server = http.createServer(app);

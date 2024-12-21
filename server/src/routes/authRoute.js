@@ -79,4 +79,57 @@ router.get("/verify", isAuthenticated, (req, res) => {
   });
 });
 
+//For Development purpose to make the login easier
+router.post("/test", async (req, res) => {
+  try {
+    const { user } = req.body;
+    
+    if (!user || !user.googleId) {
+      return res.status(400).json({ message: "Invalid user data" });
+    }
+
+    // Find or create test user in database
+    let dbUser = await User.findOne({ googleId: user.googleId });
+
+    if (!dbUser) {
+      dbUser = await User.create({
+        googleId: user.googleId,
+        email: user.email,
+        name: user.name,
+        picture: user.picture,
+        tokenVersion: 0
+      });
+    }
+
+    // Update last login
+    dbUser.lastLogin = new Date();
+    await dbUser.save();
+
+    // Generate JWT token
+    const jwtToken = jwt.sign(
+      {
+        userId: dbUser.googleId,
+        tokenVersion: dbUser.tokenVersion
+      },
+      process.env.JWT_SECRET,
+      { expiresIn: "6h" }
+    );
+
+    // Return same response structure as Google login
+    res.json({
+      token: jwtToken,
+      user: {
+        id: dbUser.googleId,
+        email: dbUser.email,
+        name: dbUser.name,
+        picture: dbUser.picture
+      }
+    });
+
+  } catch (error) {
+    console.error("Test Authentication Error:", error);
+    res.status(401).json({ message: "Authentication failed" });
+  }
+});
+
 module.exports = router;

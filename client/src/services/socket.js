@@ -1,24 +1,24 @@
 import { io } from 'socket.io-client';
 
-const SOCKET_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000';
+const SOCKET_URL = import.meta.env.VITE_SOCKET_URL || 'http://localhost:3000';
 
 export const socket = io(SOCKET_URL, {
-  autoConnect: true,
+  autoConnect: false, 
   reconnection: true,
+  reconnectionAttempts: 5,
   reconnectionDelay: 1000,
   reconnectionDelayMax: 5000,
-  reconnectionAttempts: 5
+  secure: true,
+  auth: (cb) => {
+    cb({ token: localStorage.getItem('token') });
+  }
 });
 
-// Add socket event listeners for debugging
-socket.on('connect', () => {
-  console.log('Socket connected');
+socket.on('connect_error', (error) => {
+  if (error.message === 'Invalid token') {
+    localStorage.removeItem('token');
+    window.location.href = '/';
+  }
 });
 
-socket.on('disconnect', () => {
-  console.log('Socket disconnected');
-});
-
-socket.on('error', (error) => {
-  console.error('Socket error:', error);
-});
+export default socket;

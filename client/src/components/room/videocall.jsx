@@ -1,134 +1,105 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useCallback } from "react";
 import { Box } from "@mui/material";
 import { socket } from "../../services/socket";
+import { useWebRTC } from "../../services/webrtc";
 
-/**
- * VideoCall Component
- * Handles WebRTC video call functionality with support for movie mode.
- *
- * @param {Object} props
- * @param {string} props.roomId - Unique identifier for the video call room
- * @param {boolean} props.isMicOn - Microphone enabled state
- * @param {boolean} props.isVideoOn - Camera enabled state
- * @param {boolean} props.isMovieModeActive - Movie mode state
- */
 const VideoCall = ({ roomId, isMicOn, isVideoOn, isMovieModeActive }) => {
-  const localVideoRef = useRef(null);
-  const remoteVideoRef = useRef(null);
-  const peerConnection = useRef(null);
-  const mediaStreamRef = useRef(null);
+  const {
+    localVideoRef,
+    remoteVideoRef,
+    peerConnection,
+    mediaStreamRef,
+    isInitiator,
+    cleanup,
+    createPeerConnection,
+    setupMediaStream,
+    handleNegotiation,
+    handleError
+  } = useWebRTC({ roomId, isMicOn, isVideoOn });
 
   useEffect(() => {
-    let mounted = true;
-
-    const cleanup = () => {
-      // First release all media tracks
-      if (mediaStreamRef.current) {
-        mediaStreamRef.current.getTracks().forEach(track => {
-          track.enabled = false;
-          track.stop();
-        });
-        mediaStreamRef.current = null;
-      }
-
-      // Close peer connection
+    const handleConnectionStateChange = () => {
       if (peerConnection.current) {
+        switch(peerConnection.current.connectionState) {
+          case 'connected':
+            console.log('Peers connected');
+            break;
+          case 'disconnected':
+          case 'failed':
+            handleError(new Error('Connection lost'), 'ConnectionState');
+            break;
+        }
+      }
+    };
+
+    peerConnection.current?.addEventListener('connectionstatechange', handleConnectionStateChange);
+    return () => peerConnection.current?.removeEventListener('connectionstatechange', handleConnectionStateChange);
+  }, [handleError]);
+
+  useEffect(() => {
+    const initialize = async () => {
+      cleanup();
+      
+      if (!createPeerConnection()) return;
+      
+      if (!await setupMediaStream()) return;
+
+      socket.on('user-joined', () => {
+        console.log('User joined, initiating connection');
+        isInitiator.current = true;
+        handleNegotiation();
+      });
+
+      socket.on('offer', async (offer) => {
+        console.log('Received offer, creating answer');
         try {
-          peerConnection.current.getSenders().forEach(sender => {
-            if (sender.track) {
-              sender.track.enabled = false;
-              sender.track.stop();
-            }
-          });
-          peerConnection.current.getReceivers().forEach(receiver => {
-            if (receiver.track) {
-              receiver.track.enabled = false;
-              receiver.track.stop();
-            }
-          });
-          peerConnection.current.close();
-        } catch (err) {
-          console.error('Error during peer connection cleanup:', err);
+          if (!peerConnection.current) return;
+          await peerConnection.current.setRemoteDescription(new RTCSessionDescription(offer));
+          const answer = await peerConnection.current.createAnswer();
+          await peerConnection.current.setLocalDescription(answer);
+          socket.emit('answer', { roomId, answer });
+        } catch (error) {
+          handleError(error, 'HandleOffer');
         }
-        peerConnection.current = null;
-      }
+      });
 
-      // Clear video elements
-      if (localVideoRef.current) {
-        localVideoRef.current.srcObject = null;
-      }
-      if (remoteVideoRef.current) {
-        remoteVideoRef.current.srcObject = null;
-      }
+      socket.on('answer', async (answer) => {
+        try {
+          if (!peerConnection.current) return;
+          await peerConnection.current.setRemoteDescription(new RTCSessionDescription(answer));
+        } catch (error) {
+          handleError(error, 'HandleAnswer');
+        }
+      });
 
-      // Remove socket listeners
-      socket.off("join-room");
-      socket.off("ice-candidate");
+      socket.on('ice-candidate', async ({ candidate }) => {
+        try {
+          if (!peerConnection.current) return;
+          await peerConnection.current.addIceCandidate(new RTCIceCandidate(candidate));
+        } catch (error) {
+          handleError(error, 'HandleIceCandidate');
+        }
+      });
+
+      socket.emit('join-room', roomId);
     };
 
-    const initializeWebRTC = async () => {
-      try {
-        if (!mounted) return;
-        
-        if (isVideoOn || isMicOn) {
-          // Get user media
-          const stream = await navigator.mediaDevices.getUserMedia({
-            video: isVideoOn,
-            audio: isMicOn,
-          });
-
-          if (!mounted) {
-            stream.getTracks().forEach(track => track.stop());
-            return;
-          }
-
-          mediaStreamRef.current = stream;
-          
-          if (localVideoRef.current) {
-            localVideoRef.current.srcObject = stream;
-          }
-
-          // Setup peer connection
-          peerConnection.current = new RTCPeerConnection();
-          
-          stream.getTracks().forEach(track => {
-            peerConnection.current.addTrack(track, stream);
-          });
-
-          peerConnection.current.ontrack = (event) => {
-            if (remoteVideoRef.current && mounted) {
-              remoteVideoRef.current.srcObject = event.streams[0];
-            }
-          };
-
-          peerConnection.current.onicecandidate = (event) => {
-            if (event.candidate && mounted) {
-              socket.emit("ice-candidate", { roomId, candidate: event.candidate });
-            }
-          };
-
-          socket.emit("join-room", roomId);
-        }
-      } catch (error) {
-        console.error("Error accessing media devices:", error);
-      }
-    };
-
-    initializeWebRTC();
+    initialize();
 
     return () => {
-      mounted = false;
+      socket.off('user-joined');
+      socket.off('offer');
+      socket.off('answer');
+      socket.off('ice-candidate');
       cleanup();
     };
-  }, [roomId, isMicOn, isVideoOn]);
+  }, [roomId, isMicOn, isVideoOn, cleanup, createPeerConnection, setupMediaStream, handleNegotiation, handleError]);
 
   return (
     <Box sx={{ height: "100%", position: "relative" }}>
-      {/* Main video area - Shows remote video in normal mode */}
       {!isMovieModeActive && (
         <video
-          title="Remote Video"
-          ref={remoteVideoRef} // Using remote video ref for main display
+          ref={remoteVideoRef}
           autoPlay
           playsInline
           style={{
@@ -139,7 +110,6 @@ const VideoCall = ({ roomId, isMicOn, isVideoOn, isMovieModeActive }) => {
         />
       )}
 
-      {/* Video overlay container */}
       <Box
         sx={{
           position: "absolute",
@@ -150,41 +120,21 @@ const VideoCall = ({ roomId, isMicOn, isVideoOn, isMovieModeActive }) => {
           borderRadius: 2,
           overflow: "hidden",
           boxShadow: 3,
-          display: "block",
-          zIndex: 1250, // Ensures overlay appears above movie player
+          bgcolor: "background.paper",
+          zIndex: 1250,
         }}
       >
-        {/* Local video overlay in normal mode */}
-        {!isMovieModeActive && (
-          <video
-            title="Local Video"
-            ref={localVideoRef}
-            autoPlay
-            muted={true} // Mute local video to prevent feedback
-            playsInline
-            style={{
-              width: "100%",
-              height: "100%",
-              objectFit: "cover",
-            }}
-          />
-        )}
-
-        {/* Remote video overlay in movie mode */}
-        {isMovieModeActive && (
-          <video
-            title="Remote Video"
-            ref={remoteVideoRef}
-            autoPlay
-            muted={false} // Keep remote audio in movie mode
-            playsInline
-            style={{
-              width: "100%",
-              height: "100%",
-              objectFit: "cover",
-            }}
-          />
-        )}
+        <video
+          ref={localVideoRef}
+          autoPlay
+          muted
+          playsInline
+          style={{
+            width: "100%",
+            height: "100%",
+            objectFit: "cover",
+          }}
+        />
       </Box>
     </Box>
   );
