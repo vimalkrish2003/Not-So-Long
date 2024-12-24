@@ -57,10 +57,10 @@ const RoomPage = () => {
   const [isMoviePlaying, setIsMoviePlaying] = useState(false); // Movie play/pause state
   const [isLoading, setIsLoading] = useState(true); // Loading state
   // Toggle Handlers
-  const toggleChat = () => setIsChatOpen(!isChatOpen);
-  const toggleMic = () => setIsMicOn(!isMicOn);
-  const toggleVideo = () => setIsVideoOn(!isVideoOn);
-  const toggleMovieMode = () => setIsMovieModeActive(!isMovieModeActive);
+  const toggleChat = () => setIsChatOpen((prev) => !prev);
+  const toggleMic = () => setIsMicOn((prev) => !prev);
+  const toggleVideo = () => setIsVideoOn((prev) => !prev);
+  const toggleMovieMode = () => setIsMovieModeActive((prev) => !prev);
 
   // Initialization effect
   useEffect(() => {

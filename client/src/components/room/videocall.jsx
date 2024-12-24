@@ -1,99 +1,44 @@
-import { useEffect, useCallback } from "react";
+import { useEffect } from "react";
 import { Box } from "@mui/material";
-import { socket } from "../../services/socket";
+import VideocamOffIcon from '@mui/icons-material/VideocamOff';
 import { useWebRTC } from "../../services/webrtc";
 
 const VideoCall = ({ roomId, isMicOn, isVideoOn, isMovieModeActive }) => {
   const {
     localVideoRef,
     remoteVideoRef,
-    peerConnection,
-    mediaStreamRef,
-    isInitiator,
-    cleanup,
-    createPeerConnection,
-    setupMediaStream,
-    handleNegotiation,
-    handleError
-  } = useWebRTC({ roomId, isMicOn, isVideoOn });
+    initializeMediaStream,
+    toggleAudio,
+    toggleVideo,
+    cleanup
+  } = useWebRTC({ roomId });
 
+  // Initialize stream only once, then manage tracks separately
   useEffect(() => {
-    const handleConnectionStateChange = () => {
-      if (peerConnection.current) {
-        switch(peerConnection.current.connectionState) {
-          case 'connected':
-            console.log('Peers connected');
-            break;
-          case 'disconnected':
-          case 'failed':
-            handleError(new Error('Connection lost'), 'ConnectionState');
-            break;
-        }
+    const init = async () => {
+      try {
+        await initializeMediaStream();
+        // Set initial states after stream is established
+        toggleAudio(isMicOn);
+        toggleVideo(isVideoOn);
+      } catch (err) {
+        console.error("Failed to initialize media stream:", err);
       }
     };
+    init();
 
-    peerConnection.current?.addEventListener('connectionstatechange', handleConnectionStateChange);
-    return () => peerConnection.current?.removeEventListener('connectionstatechange', handleConnectionStateChange);
-  }, [handleError]);
+    return () => cleanup();
+  }, [initializeMediaStream, cleanup]);
 
+  // Handle audio toggle
   useEffect(() => {
-    const initialize = async () => {
-      cleanup();
-      
-      if (!createPeerConnection()) return;
-      
-      if (!await setupMediaStream()) return;
+    toggleAudio(isMicOn);
+  }, [isMicOn, toggleAudio]);
 
-      socket.on('user-joined', () => {
-        console.log('User joined, initiating connection');
-        isInitiator.current = true;
-        handleNegotiation();
-      });
-
-      socket.on('offer', async (offer) => {
-        console.log('Received offer, creating answer');
-        try {
-          if (!peerConnection.current) return;
-          await peerConnection.current.setRemoteDescription(new RTCSessionDescription(offer));
-          const answer = await peerConnection.current.createAnswer();
-          await peerConnection.current.setLocalDescription(answer);
-          socket.emit('answer', { roomId, answer });
-        } catch (error) {
-          handleError(error, 'HandleOffer');
-        }
-      });
-
-      socket.on('answer', async (answer) => {
-        try {
-          if (!peerConnection.current) return;
-          await peerConnection.current.setRemoteDescription(new RTCSessionDescription(answer));
-        } catch (error) {
-          handleError(error, 'HandleAnswer');
-        }
-      });
-
-      socket.on('ice-candidate', async ({ candidate }) => {
-        try {
-          if (!peerConnection.current) return;
-          await peerConnection.current.addIceCandidate(new RTCIceCandidate(candidate));
-        } catch (error) {
-          handleError(error, 'HandleIceCandidate');
-        }
-      });
-
-      socket.emit('join-room', roomId);
-    };
-
-    initialize();
-
-    return () => {
-      socket.off('user-joined');
-      socket.off('offer');
-      socket.off('answer');
-      socket.off('ice-candidate');
-      cleanup();
-    };
-  }, [roomId, isMicOn, isVideoOn, cleanup, createPeerConnection, setupMediaStream, handleNegotiation, handleError]);
+  // Handle video toggle
+  useEffect(() => {
+    toggleVideo(isVideoOn);
+  }, [isVideoOn, toggleVideo]);
 
   return (
     <Box sx={{ height: "100%", position: "relative" }}>
@@ -106,6 +51,7 @@ const VideoCall = ({ roomId, isMicOn, isVideoOn, isMovieModeActive }) => {
             width: "100%",
             height: "100%",
             objectFit: "contain",
+            backgroundColor: "#000"
           }}
         />
       )}
@@ -133,8 +79,27 @@ const VideoCall = ({ roomId, isMicOn, isVideoOn, isMovieModeActive }) => {
             width: "100%",
             height: "100%",
             objectFit: "cover",
+            transform: "scaleX(-1)"
           }}
         />
+        {!isVideoOn && (
+          <Box
+            sx={{
+              position: 'absolute',
+              top: 0,
+              left: 0,
+              right: 0,
+              bottom: 0,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              backgroundColor: 'rgba(0, 0, 0, 0.7)',
+              zIndex: 1251,
+            }}
+          >
+            <VideocamOffIcon sx={{ fontSize: 40, color: 'white' }} />
+          </Box>
+        )}
       </Box>
     </Box>
   );
