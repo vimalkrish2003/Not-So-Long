@@ -1,6 +1,6 @@
 import { useEffect } from "react";
 import { Box } from "@mui/material";
-import VideocamOffIcon from '@mui/icons-material/VideocamOff';
+import VideocamOffIcon from "@mui/icons-material/VideocamOff";
 import { useWebRTC } from "../../services/webrtc";
 
 const VideoCall = ({ roomId, isMicOn, isVideoOn, isMovieModeActive }) => {
@@ -10,34 +10,40 @@ const VideoCall = ({ roomId, isMicOn, isVideoOn, isMovieModeActive }) => {
     initializeMediaStream,
     toggleAudio,
     toggleVideo,
-    cleanup
+    cleanup,
   } = useWebRTC({ roomId });
 
-  // Initialize stream only once, then manage tracks separately
-  useEffect(() => {
-    const init = async () => {
-      try {
-        await initializeMediaStream();
-        // Set initial states after stream is established
+// Single initialization effect
+useEffect(() => {
+  const init = async () => {
+    try {
+      await initializeMediaStream();
+      // Initial states will be set after stream is established
+      if (localVideoRef.current?.srcObject) {
         toggleAudio(isMicOn);
         toggleVideo(isVideoOn);
-      } catch (err) {
-        console.error("Failed to initialize media stream:", err);
       }
-    };
-    init();
+    } catch (err) {
+      console.error("Failed to initialize media stream:", err);
+    }
+  };
+  init();
 
-    return () => cleanup();
-  }, [initializeMediaStream, cleanup]);
+  return () => cleanup();
+}, [initializeMediaStream, cleanup]); // Remove isMicOn and isVideoOn from deps
 
   // Handle audio toggle
   useEffect(() => {
-    toggleAudio(isMicOn);
+    if (localVideoRef.current?.srcObject) {
+      toggleAudio(isMicOn);
+    }
   }, [isMicOn, toggleAudio]);
 
   // Handle video toggle
   useEffect(() => {
-    toggleVideo(isVideoOn);
+    if (localVideoRef.current?.srcObject) {
+      toggleVideo(isVideoOn);
+    }
   }, [isVideoOn, toggleVideo]);
 
   return (
@@ -51,7 +57,7 @@ const VideoCall = ({ roomId, isMicOn, isVideoOn, isMovieModeActive }) => {
             width: "100%",
             height: "100%",
             objectFit: "contain",
-            backgroundColor: "#000"
+            backgroundColor: "#000",
           }}
         />
       )}
@@ -79,25 +85,25 @@ const VideoCall = ({ roomId, isMicOn, isVideoOn, isMovieModeActive }) => {
             width: "100%",
             height: "100%",
             objectFit: "cover",
-            transform: "scaleX(-1)"
+            transform: "scaleX(-1)",
           }}
         />
         {!isVideoOn && (
           <Box
             sx={{
-              position: 'absolute',
+              position: "absolute",
               top: 0,
               left: 0,
               right: 0,
               bottom: 0,
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              backgroundColor: 'rgba(0, 0, 0, 0.7)',
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              backgroundColor: "rgba(0, 0, 0, 0.7)",
               zIndex: 1251,
             }}
           >
-            <VideocamOffIcon sx={{ fontSize: 40, color: 'white' }} />
+            <VideocamOffIcon sx={{ fontSize: 40, color: "white" }} />
           </Box>
         )}
       </Box>

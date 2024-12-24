@@ -133,7 +133,6 @@ export const useWebRTC = ({ roomId }) => {
       peerConnection.current.oniceconnectionstatechange = () => {
         console.log("ICE state:", peerConnection.current.iceConnectionState);
       };
-
       return peerConnection.current;
     } catch (err) {
       console.error("Failed to create peer connection:", err);
@@ -142,87 +141,108 @@ export const useWebRTC = ({ roomId }) => {
   }, [roomId]);
 
   // Handle media controls
-  // Handle media controls
   const toggleAudio = useCallback(async (enabled) => {
     try {
-      if (localStream.current) {
-        const audioTracks = localStream.current.getAudioTracks();
-        
-        if (!enabled) {
-          // Disable and stop existing tracks
-          audioTracks.forEach(track => {
-            track.enabled = false;
-            track.stop();
-          });
-        } else {
-          // Remove any stopped tracks
-          audioTracks.forEach(track => {
-            localStream.current.removeTrack(track);
-            const sender = peerConnection.current?.getSenders()
-              .find(s => s.track?.kind === 'audio');
-            if (sender) {
-              peerConnection.current.removeTrack(sender);
-            }
-          });
-
-          // Add new audio track
-          const audioStream = await navigator.mediaDevices.getUserMedia({
-            audio: MEDIA_CONSTRAINTS.audio,
-            video: false
-          });
+      if (!localStream.current) return;
+      
+      const audioTracks = localStream.current.getAudioTracks();
+      
+      if (!enabled) {
+        // First stop all existing audio tracks
+        for (const track of audioTracks) {
+          // Disable track before stopping
+          track.enabled = false;
+          track.stop();
           
-          const audioTrack = audioStream.getAudioTracks()[0];
-          localStream.current.addTrack(audioTrack);
-
-          if (peerConnection.current) {
-            peerConnection.current.addTrack(audioTrack, localStream.current);
+          // Remove from peer connection first
+          const sender = peerConnection.current?.getSenders()
+            .find(s => s.track === track);
+          if (sender) {
+            peerConnection.current.removeTrack(sender);
           }
+          
+          // Then remove from local stream
+          localStream.current.removeTrack(track);
+        }
+      } else {
+        // First stop any existing tracks
+        audioTracks.forEach(track => {
+          track.stop();
+          localStream.current.removeTrack(track);
+        });
+  
+        // Get fresh audio track
+        const audioStream = await navigator.mediaDevices.getUserMedia({
+          audio: MEDIA_CONSTRAINTS.audio,
+          video: false
+        });
+        
+        const newTrack = audioStream.getAudioTracks()[0];
+        newTrack.enabled = true;
+        
+        // Add to local stream first
+        localStream.current.addTrack(newTrack);
+        
+        // Then add to peer connection
+        if (peerConnection.current) {
+          peerConnection.current.addTrack(newTrack, localStream.current);
         }
       }
     } catch (err) {
       console.error("Toggle audio failed:", err);
     }
   }, []);
-
+  
   const toggleVideo = useCallback(async (enabled) => {
     try {
-      if (localStream.current) {
-        const videoTracks = localStream.current.getVideoTracks();
-        
-        if (!enabled) {
-          // Disable and stop existing tracks
-          videoTracks.forEach(track => {
-            track.enabled = false;
-            track.stop();
-          });
-        } else {
-          // Remove any stopped tracks
-          videoTracks.forEach(track => {
-            localStream.current.removeTrack(track);
-            const sender = peerConnection.current?.getSenders()
-              .find(s => s.track?.kind === 'video');
-            if (sender) {
-              peerConnection.current.removeTrack(sender);
-            }
-          });
-
-          // Add new video track
-          const videoStream = await navigator.mediaDevices.getUserMedia({
-            audio: false,
-            video: MEDIA_CONSTRAINTS.video
-          });
+      if (!localStream.current) return;
+      
+      const videoTracks = localStream.current.getVideoTracks();
+      
+      if (!enabled) {
+        // First stop all existing video tracks
+        for (const track of videoTracks) {
+          // Disable track before stopping
+          track.enabled = false;
+          track.stop();
           
-          const videoTrack = videoStream.getVideoTracks()[0];
-          localStream.current.addTrack(videoTrack);
-
-          if (peerConnection.current) {
-            peerConnection.current.addTrack(videoTrack, localStream.current);
+          // Remove from peer connection first
+          const sender = peerConnection.current?.getSenders()
+            .find(s => s.track === track);
+          if (sender) {
+            peerConnection.current.removeTrack(sender);
           }
-
-          // Update local video display
-          if (localVideoRef.current) {
-            localVideoRef.current.srcObject = localStream.current;
-          }
+          
+          // Then remove from local stream
+          localStream.current.removeTrack(track);
+        }
+      } else {
+        // First stop any existing tracks
+        videoTracks.forEach(track => {
+          track.stop();
+          localStream.current.removeTrack(track);
+        });
+  
+        // Get fresh video track
+        const videoStream = await navigator.mediaDevices.getUserMedia({
+          audio: false,
+          video: MEDIA_CONSTRAINTS.video
+        });
+        
+        const newTrack = videoStream.getVideoTracks()[0];
+        newTrack.enabled = true;
+        
+        // Add to local stream first
+        localStream.current.addTrack(newTrack);
+        
+        // Then add to peer connection
+        if (peerConnection.current) {
+          peerConnection.current.addTrack(newTrack, localStream.current);
+        }
+        
+        // Update video element last
+        if (localVideoRef.current) {
+          localVideoRef.current.srcObject = localStream.current;
         }
       }
     } catch (err) {
