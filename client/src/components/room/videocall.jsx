@@ -1,7 +1,7 @@
 import { useEffect } from "react";
 import { Box } from "@mui/material";
 import VideocamOffIcon from "@mui/icons-material/VideocamOff";
-import { useWebRTC } from "../../services/webrtc";
+import { useWebRTC } from "../../services/webrtc/useWebRTC";
 
 const VideoCall = ({ roomId, isMicOn, isVideoOn, isMovieModeActive }) => {
   const {
@@ -13,24 +13,24 @@ const VideoCall = ({ roomId, isMicOn, isVideoOn, isMovieModeActive }) => {
     cleanup,
   } = useWebRTC({ roomId });
 
-// Single initialization effect
-useEffect(() => {
-  const init = async () => {
-    try {
-      await initializeMediaStream();
-      // Initial states will be set after stream is established
-      if (localVideoRef.current?.srcObject) {
-        toggleAudio(isMicOn);
-        toggleVideo(isVideoOn);
+  // Single initialization effect
+  useEffect(() => {
+    const init = async () => {
+      try {
+        await initializeMediaStream();
+        // Initial states will be set after stream is established
+        if (localVideoRef.current?.srcObject) {
+          toggleAudio(isMicOn);
+          toggleVideo(isVideoOn);
+        }
+      } catch (err) {
+        console.error("Failed to initialize media stream:", err);
       }
-    } catch (err) {
-      console.error("Failed to initialize media stream:", err);
-    }
-  };
-  init();
+    };
+    init();
 
-  return () => cleanup();
-}, [initializeMediaStream, cleanup]); // Remove isMicOn and isVideoOn from deps
+    return () => cleanup();
+  }, [initializeMediaStream, cleanup]);
 
   // Handle audio toggle
   useEffect(() => {

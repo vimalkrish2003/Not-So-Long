@@ -1,50 +1,44 @@
-// services/roomServices.js
 import api from './apiClient';
 
 const roomServices = {
   async createRoom() {
     try {
+      // Only handle HTTP request for room creation
       const response = await api.post('/room/create');
-      console.log("Created Room Response:",response.data);
       return response.data;
     } catch (error) {
-      console.error('Create room error:', error);
       throw this.handleError(error);
     }
   },
 
   async joinRoom(roomId) {
     try {
+      // Only handle HTTP request for room joining
       const response = await api.post(`/room/join/${roomId}`);
       return response.data;
     } catch (error) {
-      console.error('Join room error:', error);
       throw this.handleError(error);
     }
   },
 
   async leaveRoom(roomId) {
     try {
+      // Only handle HTTP request for room leaving
       const response = await api.post(`/room/leave/${roomId}`);
-      console.log("Leave Room Response:",response.data);
       return response.data;
     } catch (error) {
-      console.error('Leave room error:', error);
       throw this.handleError(error);
     }
   },
 
   handleError(error) {
-    if (error.response) {
-      // Server responded with error
-      return new Error(error.response.data.message || 'Server error');
+    if (error.response?.status === 404) {
+      return new Error('Room not found');
     }
-    if (error.request) {
-      // No response received
-      return new Error('No response from server');
+    if (error.response?.status === 403) {
+      return new Error('Not authorized to access room');
     }
-    // Request setup error
-    return new Error('Failed to make request');
+    return new Error(error.response?.data?.message || 'Server error');
   }
 };
 

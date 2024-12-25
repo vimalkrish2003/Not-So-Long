@@ -4,6 +4,8 @@ import { Box, Slide, Paper, IconButton, Stack, Slider } from "@mui/material";
 import { useSnackbar } from "notistack";
 import { useAuth } from "../../contexts/authUserContext";
 import roomServices from "../../services/roomServices";
+import { socket, connectSocket, disconnectSocket } from "../../services/socket";
+import { useWebRTC } from "../../services/webrtc/useWebRTC";
 // Material UI Icons
 import CircularProgress from "@mui/material/CircularProgress";
 import ChatIcon from "@mui/icons-material/Chat";
@@ -23,46 +25,44 @@ import MoviePlayer from "../../components/room/movieplayer";
 import ChatInterface from "../../components/room/chatInterface";
 import styles from "./roomPage.module.css";
 
-/**
- * RoomPage Component
- * Provides video calling functionality with movie sharing capabilities.
- * Features:
- * - Video/Audio communication
- * - Movie playback and sharing
- * - Chat functionality
- * - Media controls
- */
 const RoomPage = () => {
   const { roomId } = useParams();
   const { user } = useAuth();
   const location = useLocation();
   const navigate = useNavigate();
   const { enqueueSnackbar } = useSnackbar();
-  // Ref for controlling MoviePlayer component
   const moviePlayerRef = useRef(null);
   const timeRef = useRef(null);
 
-  //Important State Management like host and other things
+  // Room state
   const [isHost, setIsHost] = useState(location.state?.isHost || false);
   const [roomData, setRoomData] = useState(location.state?.roomData || null);
   const [hasJoinedRoom, setHasJoinedRoom] = useState(false);
-  // State Management
-  const [isChatOpen, setIsChatOpen] = useState(false); // Controls chat panel visibility
-  const [isMovieUploaded, setIsMovieUploaded] = useState(false); // Movie upload state
-  const [isMicOn, setIsMicOn] = useState(true); // Microphone state
-  const [isVideoOn, setIsVideoOn] = useState(true); // Camera state
-  const [isControlBarVisible, setControlBarVisible] = useState(true);
-  const [isMovieModeActive, setIsMovieModeActive] = useState(false); // Movie mode toggle
-  const [movieProgress, setMovieProgress] = useState(0); // Movie progress (0-100)
-  const [isMoviePlaying, setIsMoviePlaying] = useState(false); // Movie play/pause state
-  const [isLoading, setIsLoading] = useState(true); // Loading state
-  // Toggle Handlers
-  const toggleChat = () => setIsChatOpen((prev) => !prev);
-  const toggleMic = () => setIsMicOn((prev) => !prev);
-  const toggleVideo = () => setIsVideoOn((prev) => !prev);
-  const toggleMovieMode = () => setIsMovieModeActive((prev) => !prev);
+  const [isLoading, setIsLoading] = useState(true);
 
-  // Initialization effect
+  // UI Controls state
+  const [isChatOpen, setIsChatOpen] = useState(false);
+  const [isMovieUploaded, setIsMovieUploaded] = useState(false);
+  const [isMicOn, setIsMicOn] = useState(true);
+  const [isVideoOn, setIsVideoOn] = useState(true);
+  const [isControlBarVisible, setControlBarVisible] = useState(true);
+  const [isMovieModeActive, setIsMovieModeActive] = useState(false);
+  const [movieProgress, setMovieProgress] = useState(0);
+  const [isMoviePlaying, setIsMoviePlaying] = useState(false);
+
+  // WebRTC integration
+  const {
+    localVideoRef,
+    remoteVideoRef,
+    initializeMediaStream,
+    toggleAudio: toggleRTCAudio,
+    toggleVideo: toggleRTCVideo,
+    cleanup,
+    connectionState: webRTCConnectionState,
+    isAudioAvailable,
+  } = useWebRTC({ roomId });
+
+  // Initialize room and media
   useEffect(() => {
     const initializeRoom = async () => {
       try {
@@ -71,21 +71,36 @@ const RoomPage = () => {
             const response = await roomServices.joinRoom(roomId);
             setRoomData(response);
             setIsHost(response.host === user.id);
-            setHasJoinedRoom(true); // Set joined state
+            setHasJoinedRoom(true);
+
+            // Initialize WebRTC first
+            await initializeMediaStream();
+
+            // Then connect socket with fresh token
+            connectSocket();
+            socket.emit("join-room", roomId);
           } catch (error) {
             if (error.message.includes("Room not found")) {
               const createResponse = await roomServices.createRoom();
               setRoomData(createResponse);
               setIsHost(true);
-              setHasJoinedRoom(true); // Set joined state
+              setHasJoinedRoom(true);
+
+              await initializeMediaStream();
+              connectSocket();
+              socket.emit("join-room", roomId);
             } else {
               throw error;
             }
           }
         } else {
-          setHasJoinedRoom(true); // Set joined state for direct navigation
+          setHasJoinedRoom(true);
+          await initializeMediaStream();
+          connectSocket();
+          socket.emit("join-room", roomId);
         }
       } catch (error) {
+        console.error("Room initialization error:", error);
         enqueueSnackbar(error.message || "Failed to initialize room", {
           variant: "error",
         });
@@ -96,94 +111,139 @@ const RoomPage = () => {
     };
 
     initializeRoom();
-  }, [location.state, navigate, user.id, enqueueSnackbar, roomId]);
 
-  useEffect(() => {
     return () => {
       if (roomId && hasJoinedRoom) {
+        cleanup();
+        socket.emit("leave-room", roomId);
+        disconnectSocket();
         roomServices.leaveRoom(roomId).catch(console.error);
       }
     };
-  }, [roomId, hasJoinedRoom]);
+  }, [
+    roomId,
+    location.state,
+    navigate,
+    user.id,
+    enqueueSnackbar,
+    initializeMediaStream,
+    cleanup,
+  ]);
 
-  /**
-   * Handles movie playback toggle and communicates with MoviePlayer component
-   */
-  const toggleMoviePlayback = () => {
-    setIsMoviePlaying(!isMoviePlaying);
-    if (moviePlayerRef.current) {
-      //moviePlayerRef.current.handlePlaybackToggle();
+  // Connection state monitoring
+  useEffect(() => {
+    if (
+      webRTCConnectionState === "disconnected" ||
+      webRTCConnectionState === "failed"
+    ) {
+      enqueueSnackbar("Connection lost. Attempting to reconnect...", {
+        variant: "warning",
+        autoHideDuration: 3000,
+      });
+    } else if (webRTCConnectionState === "connected") {
+      enqueueSnackbar("Connection established", {
+        variant: "success",
+        autoHideDuration: 2000,
+      });
     }
-  };
+  }, [webRTCConnectionState, enqueueSnackbar]);
+
+  // UI control handlers
+  const toggleChat = () => setIsChatOpen((prev) => !prev);
+  const toggleMic = useCallback(() => {
+    if (!isAudioAvailable) {
+      enqueueSnackbar("No microphone available", {
+        variant: "warning",
+        autoHideDuration: 2000,
+      });
+      return;
+    }
+
+    setIsMicOn((prev) => {
+      const newState = !prev;
+      if (hasJoinedRoom) {
+        toggleRTCAudio(newState);
+      }
+      return newState;
+    });
+  }, [hasJoinedRoom, toggleRTCAudio, isAudioAvailable, enqueueSnackbar]);
+
+  const toggleVideo = useCallback(() => {
+    setIsVideoOn((prev) => {
+      const newState = !prev;
+      if (hasJoinedRoom) {
+        toggleRTCVideo(newState); // This calls useWebRTC's toggle function
+      }
+      return newState;
+    });
+  }, [hasJoinedRoom, toggleRTCVideo]);
+  const toggleMovieMode = () => setIsMovieModeActive((prev) => !prev);
 
   const handleMouseEnter = useCallback(() => {
     if (timeRef.current) {
       clearTimeout(timeRef.current);
     }
-
     setControlBarVisible(true);
   }, []);
+
   const handleMouseLeave = useCallback(() => {
     timeRef.current = setTimeout(() => {
       setControlBarVisible(false);
     }, 1000);
   }, []);
 
-  /**
-   * Handles seeking in the movie timeline
-   * @param {Event} _ - Unused event parameter
-   * @param {number} value - New progress value (0-100)
-   */
-  const handleSeek = (_, value) => {
-    setMovieProgress(value);
+  // Movie control handlers
+  const toggleMoviePlayback = () => {
+    setIsMoviePlaying(!isMoviePlaying);
     if (moviePlayerRef.current) {
-      // moviePlayerRef.current.handleSeek(value);
+      moviePlayerRef.current.handlePlaybackToggle?.();
     }
   };
 
-  // Movie Control Handlers
+  const handleSeek = (_, value) => {
+    setMovieProgress(value);
+    if (moviePlayerRef.current) {
+      moviePlayerRef.current.handleSeek?.(value);
+    }
+  };
+
   const handleFastForward = () => {
     if (moviePlayerRef.current) {
-      // moviePlayerRef.current.handleFastForward();
+      moviePlayerRef.current.handleFastForward?.();
     }
   };
 
   const handleRewind = () => {
     if (moviePlayerRef.current) {
-      //moviePlayerRef.current.handleRewind();
+      moviePlayerRef.current.handleRewind?.();
     }
   };
 
-  /**
-   * Handles movie file upload via file input
-   * Triggers movie playback when file is selected
-   */
   const handleUploadMovie = () => {
     const input = document.createElement("input");
     input.type = "file";
     input.accept = "video/*";
 
     input.onchange = (e) => {
-      const file = e.target.files[0];
+      const file = e.target.files?.[0];
       if (!file) return;
 
-      // Check if file is video type
       if (!file.type.startsWith("video/")) {
-        alert("Please select a valid video file");
+        enqueueSnackbar("Please select a valid video file", {
+          variant: "error",
+        });
         return;
       }
 
-      // Proceed with valid video file
       setIsMovieUploaded(true);
       if (moviePlayerRef.current) {
-        moviePlayerRef.current.handleFileUpload(file);
+        moviePlayerRef.current.handleFileUpload?.(file);
       }
     };
 
     input.click();
   };
 
-  // Loading State
   if (isLoading) {
     return (
       <Box
@@ -199,7 +259,6 @@ const RoomPage = () => {
 
   return (
     <Box className={styles.container}>
-      {/* Video Call Section */}
       <Box className={styles.videoContainer}>
         <VideoCall
           roomId={roomId}
@@ -209,7 +268,6 @@ const RoomPage = () => {
         />
       </Box>
 
-      {/* Movie Player Section - Currently set as Disabled always for developement. Do Not Change this Code */}
       {false && (
         <Box className={styles.moviePlayer}>
           <MoviePlayer
@@ -222,14 +280,12 @@ const RoomPage = () => {
         </Box>
       )}
 
-      {/* Chat Panel - Slides in from left */}
       <Slide direction="left" in={isChatOpen} timeout={300}>
         <Box className={styles.chatPanel}>
           <ChatInterface roomId={roomId} />
         </Box>
       </Slide>
 
-      {/* Control Bar */}
       <Box
         className={styles.controlBarContainer}
         onMouseEnter={handleMouseEnter}
@@ -251,30 +307,48 @@ const RoomPage = () => {
               className={styles.controls}
               alignItems="center"
             >
-              {/* Video Call Controls */}
-              <>
-                <IconButton
-                  onClick={toggleMic}
-                  className={`${styles.controlButton} ${
-                    !isMicOn ? styles.muted : ""
-                  }`}
-                  size="large"
-                >
-                  {isMicOn ? <MicIcon /> : <MicOffIcon />}
-                </IconButton>
+              <IconButton
+                onClick={toggleMic}
+                className={`${styles.controlButton} ${
+                  !isAudioAvailable || !isMicOn ? styles.muted : ""
+                }`}
+                disabled={!isAudioAvailable}
+                title={
+                  isAudioAvailable
+                    ? "Toggle Microphone"
+                    : "No microphone available"
+                }
+                size="large"
+                sx={{
+                  "&.Mui-disabled": {
+                    opacity: 1, // Keep full opacity when disabled
+                    color: "inherit", // Inherit the red color from muted class
+                  },
+                }}
+              >
+                {
+                  isAudioAvailable ? (
+                    isMicOn ? (
+                      <MicIcon />
+                    ) : (
+                      <MicOffIcon />
+                    )
+                  ) : (
+                    <MicOffIcon />
+                  ) // Always show MicOffIcon when no audio available
+                }
+              </IconButton>
 
-                <IconButton
-                  onClick={toggleVideo}
-                  className={`${styles.controlButton} ${
-                    !isVideoOn ? styles.muted : ""
-                  }`}
-                  size="large"
-                >
-                  {isVideoOn ? <VideocamIcon /> : <VideocamOffIcon />}
-                </IconButton>
-              </>
+              <IconButton
+                onClick={toggleVideo}
+                className={`${styles.controlButton} ${
+                  !isVideoOn ? styles.muted : ""
+                }`}
+                size="large"
+              >
+                {isVideoOn ? <VideocamIcon /> : <VideocamOffIcon />}
+              </IconButton>
 
-              {/* Chat Toggle */}
               <IconButton
                 onClick={toggleChat}
                 className={`${styles.controlButton} ${
@@ -285,7 +359,6 @@ const RoomPage = () => {
                 <ChatIcon />
               </IconButton>
 
-              {/* Movie Mode Toggle */}
               <IconButton
                 onClick={toggleMovieMode}
                 className={`${styles.controlButton} ${
@@ -296,7 +369,6 @@ const RoomPage = () => {
                 <MovieIcon />
               </IconButton>
 
-              {/* Movie Controls - Only shown in movie mode */}
               {isMovieModeActive && (
                 <Box
                   className={styles.movieControls}
@@ -334,7 +406,6 @@ const RoomPage = () => {
                     <FastForwardIcon />
                   </IconButton>
 
-                  {/* Progress Slider */}
                   <Slider
                     value={movieProgress}
                     onChange={handleSeek}

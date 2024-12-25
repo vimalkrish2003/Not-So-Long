@@ -1,24 +1,55 @@
 import { io } from 'socket.io-client';
 
-const SOCKET_URL = import.meta.env.VITE_SOCKET_URL || 'http://localhost:3000';
+const createSocket = () => {
+  const socket = io(import.meta.env.VITE_SOCKET_URL, {
+    autoConnect: false,
+    reconnection: true,
+    reconnectionAttempts: 3,
+    reconnectionDelay: 1000,
+    auth: () => ({
+      token: localStorage.getItem('token') // Use function to get fresh token
+    }),
+    transports: ['websocket']
+  });
 
-export const socket = io(SOCKET_URL, {
-  autoConnect: false, 
-  reconnection: true,
-  reconnectionAttempts: 5,
-  reconnectionDelay: 1000,
-  reconnectionDelayMax: 5000,
-  secure: true,
-  auth: (cb) => {
-    cb({ token: localStorage.getItem('token') });
+  // Handle connection errors
+  socket.on('connect_error', (error) => {
+    console.error('Socket connection error:', error);
+    if (error.message === 'Invalid token') {
+      localStorage.removeItem('token');
+      window.location.href = '/';
+    }
+  });
+
+  // Handle disconnections
+  socket.on('disconnect', (reason) => {
+    console.log('Socket disconnected:', reason);
+    if (reason === 'io server disconnect') {
+      setTimeout(() => {
+        // Get fresh token before reconnecting
+        socket.auth = {
+          token: localStorage.getItem('token')
+        };
+        socket.connect();
+      }, 1000);
+    }
+  });
+
+  return socket;
+};
+
+export const socket = createSocket();
+
+// Export connect/disconnect helpers
+export const connectSocket = () => {
+  const token = localStorage.getItem('token');
+  if (!token) {
+    throw new Error('No authentication token');
   }
-});
+  socket.auth = { token };
+  socket.connect();
+};
 
-socket.on('connect_error', (error) => {
-  if (error.message === 'Invalid token') {
-    localStorage.removeItem('token');
-    window.location.href = '/';
-  }
-});
-
-export default socket;
+export const disconnectSocket = () => {
+  socket.disconnect();
+};
