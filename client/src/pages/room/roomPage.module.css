@@ -34,7 +34,7 @@
   height: 100%;
   width: 100%;
   position: relative;
-  z-index: 1100;                /* Base layer for content */
+  z-index: 1200;                /* Base layer for content */
 }
 
 /* Video gradient overlay - Adds depth to video 
@@ -79,7 +79,7 @@
   height: 100%;
   background-color: rgba(0, 0, 0, 0.95);
   backdrop-filter: blur(8px);
-  z-index: 1200;                /* Above video, below controls */
+  z-index: 1100;                /* Above video, below controls */
   transition: all var(--transition-default);
 }
 

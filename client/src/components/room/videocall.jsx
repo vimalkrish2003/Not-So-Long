@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { Box } from "@mui/material";
 import VideocamOffIcon from "@mui/icons-material/VideocamOff";
 import { useWebRTC } from "../../services/webrtc/useWebRTC";
@@ -7,18 +7,21 @@ const VideoCall = ({ roomId, isMicOn, isVideoOn, isMovieModeActive }) => {
   const {
     localVideoRef,
     remoteVideoRef,
+    localStream,
+    remoteStream,
     initializeMediaStream,
     toggleAudio,
     toggleVideo,
     cleanup,
   } = useWebRTC({ roomId });
 
+  const pipRemoteVideoRef = useRef(null);
+
   // Single initialization effect
   useEffect(() => {
     const init = async () => {
       try {
         await initializeMediaStream();
-        // Initial states will be set after stream is established
         if (localVideoRef.current?.srcObject) {
           toggleAudio(isMicOn);
           toggleVideo(isVideoOn);
@@ -46,22 +49,41 @@ const VideoCall = ({ roomId, isMicOn, isVideoOn, isMovieModeActive }) => {
     }
   }, [isVideoOn, toggleVideo]);
 
+  useEffect(() => {
+    if (
+      isMovieModeActive &&
+      remoteVideoRef.current?.srcObject &&
+      pipRemoteVideoRef.current
+    ) {
+      // Switch to remote video in PiP when movie mode is active
+      pipRemoteVideoRef.current.srcObject = remoteVideoRef.current.srcObject;
+    } else if (!isMovieModeActive && pipRemoteVideoRef.current) {
+      // Switch back to local video in PiP when movie mode is deactivated
+      pipRemoteVideoRef.current.srcObject = null;
+      if (localVideoRef.current?.srcObject && localStream?.current) {
+        // Add null check for localStream
+        localVideoRef.current.srcObject = localStream.current;
+      }
+    }
+  }, [isMovieModeActive, localStream]); // Keep localStream in dependencies
+
   return (
     <Box sx={{ height: "100%", position: "relative" }}>
-      {!isMovieModeActive && (
-        <video
-          ref={remoteVideoRef}
-          autoPlay
-          playsInline
-          style={{
-            width: "100%",
-            height: "100%",
-            objectFit: "contain",
-            backgroundColor: "#000",
-          }}
-        />
-      )}
+      {/* Main video display */}
+      <video
+        ref={remoteVideoRef}
+        autoPlay
+        playsInline
+        style={{
+          width: "100%",
+          height: "100%",
+          objectFit: "contain",
+          backgroundColor: "#000",
+          display: isMovieModeActive ? "none" : "block",
+        }}
+      />
 
+      {/* Picture-in-picture display */}
       <Box
         sx={{
           position: "absolute",
@@ -86,9 +108,21 @@ const VideoCall = ({ roomId, isMicOn, isVideoOn, isMovieModeActive }) => {
             height: "100%",
             objectFit: "cover",
             transform: "scaleX(-1)",
+            display: isMovieModeActive ? "none" : "block",
           }}
         />
-        {!isVideoOn && (
+        <video
+          ref={pipRemoteVideoRef}
+          autoPlay
+          playsInline
+          style={{
+            width: "100%",
+            height: "100%",
+            objectFit: "cover",
+            display: isMovieModeActive ? "block" : "none",
+          }}
+        />
+        {!isVideoOn && !isMovieModeActive && (
           <Box
             sx={{
               position: "absolute",

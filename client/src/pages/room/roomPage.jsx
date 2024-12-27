@@ -49,6 +49,7 @@ const RoomPage = () => {
   const [isMovieModeActive, setIsMovieModeActive] = useState(false);
   const [movieProgress, setMovieProgress] = useState(0);
   const [isMoviePlaying, setIsMoviePlaying] = useState(false);
+  const [movieDuration, setMovieDuration] = useState(0);
 
   // WebRTC integration
   const {
@@ -60,6 +61,7 @@ const RoomPage = () => {
     cleanup,
     connectionState: webRTCConnectionState,
     isAudioAvailable,
+    peerConnection,
   } = useWebRTC({ roomId });
 
   // Initialize room and media
@@ -244,6 +246,12 @@ const RoomPage = () => {
     input.click();
   };
 
+
+  const handleDurationChange = useCallback((duration) => {
+    setMovieDuration(duration);
+  }, []);
+
+
   if (isLoading) {
     return (
       <Box
@@ -268,14 +276,15 @@ const RoomPage = () => {
         />
       </Box>
 
-      {false && (
+      {isMovieModeActive && (
         <Box className={styles.moviePlayer}>
           <MoviePlayer
             ref={moviePlayerRef}
             roomId={roomId}
+            peerConnection={peerConnection} // Add this prop
             onPlayingChange={setIsMovieUploaded}
             isPlaying={isMoviePlaying}
-            onProgressChange={setMovieProgress}
+            onProgressChange={handleDurationChange}
           />
         </Box>
       )}
@@ -407,7 +416,7 @@ const RoomPage = () => {
                   </IconButton>
 
                   <Slider
-                    value={movieProgress}
+                    value={Number.isFinite(movieProgress) ? movieProgress : 0}
                     onChange={handleSeek}
                     className={styles.progressSlider}
                     min={0}
