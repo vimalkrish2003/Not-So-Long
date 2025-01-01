@@ -16,13 +16,6 @@ export const theme = createTheme({
             backgroundColor: 'rgba(41, 41, 41, 0.95)',
             backdropFilter: 'blur(10px)',
             border: '1px solid rgba(255, 255, 255, 0.1)',
-          },
-          '&.message': {
-            backgroundColor: 'rgba(49, 49, 49, 0.95)',
-            color: '#ffffff',
-          },
-          '&.sentMessage .message': {
-            backgroundColor: 'rgba(33, 150, 243, 0.9)',
           }
         }
       }

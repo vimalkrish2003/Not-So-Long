@@ -75,14 +75,14 @@ const initializeSocket = (server) => {
     });
 
     // Handle WebRTC signaling
-    socket.on("offer", ({ offer }) => {
+    socket.on("offer", ({ offer,user }) => {
       // Broadcast offer to others in the room
       const rooms = Array.from(socket.rooms);
       const roomId = rooms.find((room) => room !== socket.id);
       if (roomId) {
         socket.to(roomId).emit("offer", {
           offer,
-          from: socket.userId,
+          from: user,
         });
       }
     });
@@ -94,7 +94,6 @@ const initializeSocket = (server) => {
       if (roomId) {
         socket.to(roomId).emit("answer", {
           answer,
-          from: socket.userId,
         });
       }
     });

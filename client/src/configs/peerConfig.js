@@ -12,12 +12,11 @@ export const RTC_CONFIG = {
     MOVIE_ISLOADED: 'MOVIE_LOADED',
     MOVIE_MODE_ISACTIVE: 'MOVIE_MODE_ISACTIVE',
   };
-  
+
   export const ChatMessageTypes = {
     MESSAGE: 'MESSAGE',           // Regular chat message
     USER_TYPING: 'USER_TYPING',  // User is typing indicator
     USER_SEEN: 'USER_SEEN',      // Message seen status
-    SYSTEM: 'SYSTEM'             // System notifications
   };
 
   export const MovieMessageTypes = {

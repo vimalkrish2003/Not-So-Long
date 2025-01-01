@@ -13,13 +13,16 @@ import {
   ChatMessageTypes,
 } from "../configs/peerConfig";
 import { useSocket } from "./socketContext";
+import { useAuth } from "../contexts/authUserContext";
 
 const PeerContext = createContext(null);
 
 export const PeerProvider = ({ children }) => {
   const socket = useSocket();
+  const { user: localUser } = useAuth();
   const [peerConnection, setPeerConnection] = useState(null);
   const [remoteUserId, setRemoteUserId] = useState(null);
+  const [remoteUser, setRemoteUser] = useState(null);
   const [localStream, setLocalStream] = useState(null);
   const [remoteStream, setRemoteStream] = useState(null);
   const [connectionState, setConnectionState] = useState("disconnected");
@@ -39,7 +42,6 @@ export const PeerProvider = ({ children }) => {
       [ChatMessageTypes.MESSAGE]: new Set(),
       [ChatMessageTypes.USER_TYPING]: new Set(),
       [ChatMessageTypes.USER_SEEN]: new Set(),
-      [ChatMessageTypes.SYSTEM]: new Set(),
     },
     movie: {
       [MovieMessageTypes.CHUNK]: new Set(),
@@ -310,8 +312,18 @@ export const PeerProvider = ({ children }) => {
   );
 
   const sendChat = useCallback(
-    (message) => {
+    (type, payload) => {
+      if (!Object.values(ChatMessageTypes).includes(type)) {
+        console.error(`Invalid chat message type: ${type}`);
+        return;
+      }
+  
       if (chatChannel?.readyState === "open") {
+        const message = {
+          type,
+          payload,
+          timestamp: Date.now()
+        };
         chatChannel.send(JSON.stringify(message));
       }
     },
@@ -334,9 +346,9 @@ export const PeerProvider = ({ children }) => {
     socket.on("user-connected", async ({ user }) => {
       try {
         console.log("User connected, creating offer");
-        setRemoteUserId(user.id);
+        setRemoteUser(user);
         const offer = await createOffer(localStream);
-        socket.emit("offer", { offer });
+        socket.emit("offer", { offer,user :localUser });
       } catch (err) {
         console.error("Error creating offer:", err);
       }
@@ -346,7 +358,7 @@ export const PeerProvider = ({ children }) => {
     socket.on("offer", async ({ offer, from }) => {
       try {
         console.log("Received offer from:", from);
-        setRemoteUserId(from);
+        setRemoteUser(from); // Set remote user from offer payload
         if (localStream) {
           const answer = await createAnswer(offer, localStream);
           console.log("Sending answer");
@@ -359,9 +371,9 @@ export const PeerProvider = ({ children }) => {
 
     // Handle disconnect
     socket.on("user-left", ({ userId }) => {
-      if (userId === remoteUserId) {
+      if (userId === remoteUser?.id) {
         console.log("Remote peer disconnected, cleaning up connection");
-        setRemoteUserId(null);
+        setRemoteUser(null);
         if (peerConnection) {
           // Close channels gracefully
           [controlChannel, chatChannel, movieChannel].forEach((channel) => {
@@ -406,6 +418,7 @@ export const PeerProvider = ({ children }) => {
   const value = {
     peerConnection,
     remoteStream,
+    remoteUser,
     connectionState,
     createOffer,
     createAnswer,
