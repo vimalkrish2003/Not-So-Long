@@ -1,71 +1,72 @@
-import { useEffect, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { Box } from "@mui/material";
+import {usePeer} from "../../contexts/peerContext";
+import { useSnackbar } from "notistack";
+import roomServices from "../../services/roomServices";
 import VideocamOffIcon from "@mui/icons-material/VideocamOff";
-import { useWebRTC } from "../../services/webrtc/useWebRTC";
 
-const VideoCall = ({ roomId, isMicOn, isVideoOn, isMovieModeActive }) => {
-  const {
-    localVideoRef,
-    remoteVideoRef,
-    localStream,
-    remoteStream,
-    initializeMediaStream,
-    toggleAudio,
-    toggleVideo,
-    cleanup,
-  } = useWebRTC({ roomId });
-
+const VideoCall = ({ roomId, isMicOn, isVideoOn, isMovieModeActive,onInitialized }) => {
+  const { enqueueSnackbar } = useSnackbar();
+  const localVideoRef = useRef(null);
+  const remoteVideoRef = useRef(null);
   const pipRemoteVideoRef = useRef(null);
+  const initRef = useRef(false); 
+  
+  const { setLocalStream, remoteStream } = usePeer();
 
-  // Single initialization effect
+
   useEffect(() => {
-    const init = async () => {
+    if (remoteStream) {
+      if (remoteVideoRef.current) {
+        remoteVideoRef.current.srcObject = remoteStream;
+      }
+      if (pipRemoteVideoRef.current) {
+        pipRemoteVideoRef.current.srcObject = remoteStream;
+      }
+    }
+  }, [remoteStream]);
+
+  // Initialize media stream
+  useEffect(() => {
+    const initializeMedia = async () => {
+      if (initRef.current) {
+        console.log("Media already initialized");
+        return;
+      }
+       
       try {
-        await initializeMediaStream();
-        if (localVideoRef.current?.srcObject) {
-          toggleAudio(isMicOn);
-          toggleVideo(isVideoOn);
+        const { stream, error } = await roomServices.initializeUserMedia();
+
+        if (error) {
+          enqueueSnackbar(error, { variant: "error" });
+          return;
         }
+
+        // Set stream in both local state and PeerContext
+        setLocalStream(stream);
+        if (localVideoRef.current) {
+          localVideoRef.current.srcObject = stream;
+        }
+
+        // Only notify parent after successful initialization
+        initRef.current = true; // Mark as initialized using ref
+        onInitialized();
+
       } catch (err) {
-        console.error("Failed to initialize media stream:", err);
+        console.error("Failed to initialize media:", err);
+        enqueueSnackbar("Failed to access media devices", { variant: "error" });
       }
     };
-    init();
 
-    return () => cleanup();
-  }, [initializeMediaStream, cleanup]);
+    initializeMedia();
 
-  // Handle audio toggle
-  useEffect(() => {
-    if (localVideoRef.current?.srcObject) {
-      toggleAudio(isMicOn);
-    }
-  }, [isMicOn, toggleAudio]);
-
-  // Handle video toggle
-  useEffect(() => {
-    if (localVideoRef.current?.srcObject) {
-      toggleVideo(isVideoOn);
-    }
-  }, [isVideoOn, toggleVideo]);
-
-  useEffect(() => {
-    if (
-      isMovieModeActive &&
-      remoteVideoRef.current?.srcObject &&
-      pipRemoteVideoRef.current
-    ) {
-      // Switch to remote video in PiP when movie mode is active
-      pipRemoteVideoRef.current.srcObject = remoteVideoRef.current.srcObject;
-    } else if (!isMovieModeActive && pipRemoteVideoRef.current) {
-      // Switch back to local video in PiP when movie mode is deactivated
-      pipRemoteVideoRef.current.srcObject = null;
-      if (localVideoRef.current?.srcObject && localStream?.current) {
-        // Add null check for localStream
-        localVideoRef.current.srcObject = localStream.current;
+    return () => {
+      if (localVideoRef.current?.srcObject) {
+        roomServices.stopMediaStream(localVideoRef.current.srcObject);
       }
-    }
-  }, [isMovieModeActive, localStream]); // Keep localStream in dependencies
+      initRef.current = false; // Reset on unmount
+    };
+  }, [enqueueSnackbar, setLocalStream, onInitialized]);
 
   return (
     <Box sx={{ height: "100%", position: "relative" }}>

@@ -42,6 +42,7 @@ export const socket = createSocket();
 
 // Export connect/disconnect helpers
 export const connectSocket = () => {
+  if (socket.connected) return;
   const token = localStorage.getItem('token');
   if (!token) {
     throw new Error('No authentication token');
@@ -51,5 +52,6 @@ export const connectSocket = () => {
 };
 
 export const disconnectSocket = () => {
+  if (!socket.connected) return;
   socket.disconnect();
 };

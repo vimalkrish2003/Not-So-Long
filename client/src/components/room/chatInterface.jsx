@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useRef } from "react";
 import {
   Box,
   TextField,
@@ -8,27 +8,14 @@ import {
   Avatar,
 } from "@mui/material";
 import SendIcon from "@mui/icons-material/Send";
-import { socket } from "../../services/socket";
 import { useAuth } from "../../contexts/authUserContext";
 import styles from "./chatInterface.module.css";
 
 const ChatInterface = ({ roomId }) => {
   const { user } = useAuth();
-  const [messages, setMessages] = useState([]);
+  const [messages, setMessages] = useState([]);  
   const [newMessage, setNewMessage] = useState("");
   const messagesEndRef = useRef(null);
-
-  useEffect(() => {
-    socket.on("chat-message", (message) => {
-      setMessages((prev) => [...prev, message]);
-    });
-
-    return () => socket.off("chat-message");
-  }, []);
-
-  useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages]);
 
   const handleSend = () => {
     if (newMessage.trim()) {
@@ -39,7 +26,8 @@ const ChatInterface = ({ roomId }) => {
         avatar: user.picture,
         timestamp: new Date().toISOString(),
       };
-      socket.emit("chat-message", messageData);
+      // Add message locally for UI demonstration
+      setMessages(prev => [...prev, messageData]);
       setNewMessage("");
     }
   };

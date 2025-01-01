@@ -1,5 +1,7 @@
 import { BrowserRouter as Router, Route, Routes } from "react-router-dom";
 import { AuthProvider } from "./contexts/authUserContext";
+import { SocketProvider } from "./contexts/socketContext";
+import { PeerProvider } from "./contexts/peerContext";
 import { SnackbarProvider } from "notistack";
 import { ThemeProvider } from "@emotion/react";
 import ProtectedRoute from "./components/protectedRoute";
@@ -15,35 +17,39 @@ function App() {
     <ThemeProvider theme={theme}>
       <SnackbarProvider maxSnack={3}>
         <AuthProvider>
-          <Router>
-            <Routes>
-              <Route
-                path="/"
-                element={
-                  <UnprotectedRoute>
-                    <HomePage />
-                  </UnprotectedRoute>
-                }
-              />
-              <Route
-                path="/room/:roomId"
-                element={
-                  <ProtectedRoute>
-                    <RoomPage />
-                  </ProtectedRoute>
-                }
-              />
-              <Route
-                path="/dash"
-                element={
-                  <ProtectedRoute>
-                    <DashPage />
-                  </ProtectedRoute>
-                }
-              />
-              <Route path="*" element={<div>404 Not Found</div>} />
-            </Routes>
-          </Router>
+          <SocketProvider>
+            <Router>
+              <Routes>
+                <Route
+                  path="/"
+                  element={
+                    <UnprotectedRoute>
+                      <HomePage />
+                    </UnprotectedRoute>
+                  }
+                />
+                <Route
+                  path="/room/:roomId"
+                  element={
+                    <ProtectedRoute>
+                      <PeerProvider>
+                        <RoomPage />
+                      </PeerProvider>
+                    </ProtectedRoute>
+                  }
+                />
+                <Route
+                  path="/dash"
+                  element={
+                    <ProtectedRoute>
+                      <DashPage />
+                    </ProtectedRoute>
+                  }
+                />
+                <Route path="*" element={<div>404 Not Found</div>} />
+              </Routes>
+            </Router>
+          </SocketProvider>
         </AuthProvider>
       </SnackbarProvider>
     </ThemeProvider>

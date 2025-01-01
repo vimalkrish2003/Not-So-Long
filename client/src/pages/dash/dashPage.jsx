@@ -1,74 +1,79 @@
-import { useState } from 'react';
-import { useAuth } from '../../contexts/authUserContext';
-import { useNavigate } from 'react-router-dom';
-import { useSnackbar } from 'notistack';
-import roomServices from '../../services/roomServices';
-import { 
-  Container, 
-  Button, 
-  Box, 
-  Stack, 
+import { useState,useEffect } from "react";
+import { useAuth } from "../../contexts/authUserContext";
+import { useNavigate } from "react-router-dom";
+import { useSnackbar } from "notistack";
+import { socket } from "../../services/socket"; 
+import {
+  Container,
+  Button,
+  Box,
+  Stack,
   Typography,
   TextField,
   Dialog,
   DialogTitle,
   DialogContent,
-  DialogActions 
-} from '@mui/material';
-import styles from './dashPage.module.css';
+  DialogActions,
+} from "@mui/material";
+import styles from "./dashPage.module.css";
 
 const DashPage = () => {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
   const { enqueueSnackbar } = useSnackbar();
   const [joinDialogOpen, setJoinDialogOpen] = useState(false);
-  const [roomId, setRoomId] = useState('');
+  const [roomId, setRoomId] = useState("");
   const [isLoading, setIsLoading] = useState(false);
+
+  useEffect(() => {
+    // Room creation response
+    const handleRoomCreated = (roomData) => {
+      setIsLoading(false);
+      navigate(`/room/${roomData.roomId}`);
+    };
+
+    // Room join response
+    const handleRoomJoined = (roomData) => {
+      setIsLoading(false);
+      setJoinDialogOpen(false);
+      navigate(`/room/${roomData.roomId}`);
+    };
+
+    // Error handler
+    const handleRoomError = (error) => {
+      setIsLoading(false);
+      enqueueSnackbar(error.message || "Room operation failed", {
+        variant: "error",
+      });
+    };
+
+    // Setup socket listeners
+    socket.on("room-created", handleRoomCreated);
+    socket.on("room-joined", handleRoomJoined);
+    socket.on("room-error", handleRoomError);
+
+    // Cleanup listeners
+    return () => {
+      socket.off("room-created", handleRoomCreated);
+      socket.off("room-joined", handleRoomJoined);
+      socket.off("room-error", handleRoomError);
+    };
+  }, [navigate, user.id, enqueueSnackbar]);
 
   const handleLogout = () => {
     logout();
-    navigate('/');
+    navigate("/");
   };
 
   const handleStartCall = async () => {
     setIsLoading(true);
-    try {
-      const { roomId, host } = await roomServices.createRoom();
-      navigate(`/room/${roomId}`, { 
-        state: { 
-          isHost: true,
-          roomData: { roomId, host }
-        }
-      });
-    } catch (error) {
-      enqueueSnackbar(error.message || 'Failed to create room', { 
-        variant: 'error'
-      });
-    } finally {
-      setIsLoading(false);
-    }
+    socket.emit("create-room");
   };
 
   const handleJoinCall = async () => {
     if (!roomId.trim()) return;
-    
     setIsLoading(true);
-    try {
-      const response = await roomServices.joinRoom(roomId);
-      navigate(`/room/${roomId}`, { 
-        state: { 
-          isHost: response.host === user.id,
-          roomData: response
-        }
-      });
-    } catch (error) {
-      enqueueSnackbar(
-        error.response?.data?.message || 'Failed to join room', 
-        { variant: 'error' }
-      );
-    } finally {
-      setIsLoading(false);
-    }
+    socket.emit('join-room', { roomId });
   };
 
   return (
@@ -78,27 +83,23 @@ const DashPage = () => {
           <Typography variant="h4" className={styles.welcomeText}>
             Welcome {user?.name}
           </Typography>
-          <Button 
-            variant="outlined" 
-            color="error" 
-            onClick={handleLogout}
-          >
+          <Button variant="outlined" color="error" onClick={handleLogout}>
             Logout
           </Button>
         </Box>
 
         <Stack className={styles.buttonContainer} spacing={2} direction="row">
-          <Button 
-            variant="contained" 
-            color="primary" 
+          <Button
+            variant="contained"
+            color="primary"
             onClick={handleStartCall}
             size="large"
             disabled={isLoading}
           >
-            {isLoading ? 'Creating Room...' : 'Start New Call'}
+            {isLoading ? "Creating Room..." : "Start New Call"}
           </Button>
-          <Button 
-            variant="outlined" 
+          <Button
+            variant="outlined"
             color="primary"
             onClick={() => setJoinDialogOpen(true)}
             size="large"
@@ -108,8 +109,8 @@ const DashPage = () => {
           </Button>
         </Stack>
 
-        <Dialog 
-          open={joinDialogOpen} 
+        <Dialog
+          open={joinDialogOpen}
           onClose={() => !isLoading && setJoinDialogOpen(false)}
         >
           <DialogTitle>Join Video Call</DialogTitle>
@@ -126,18 +127,18 @@ const DashPage = () => {
             />
           </DialogContent>
           <DialogActions className={styles.dialogActions}>
-            <Button 
+            <Button
               onClick={() => setJoinDialogOpen(false)}
               disabled={isLoading}
             >
               Cancel
             </Button>
-            <Button 
-              onClick={handleJoinCall} 
+            <Button
+              onClick={handleJoinCall}
               variant="contained"
               disabled={isLoading || !roomId.trim()}
             >
-              {isLoading ? 'Joining...' : 'Join'}
+              {isLoading ? "Joining..." : "Join"}
             </Button>
           </DialogActions>
         </Dialog>
