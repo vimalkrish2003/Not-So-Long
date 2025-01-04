@@ -37,6 +37,9 @@ export const PeerProvider = ({ children }) => {
       [ControlMessageTypes.MOVIE_SEEK]: new Set(),
       [ControlMessageTypes.MOVIE_ISLOADED]: new Set(),
       [ControlMessageTypes.MOVIE_MODE_ISACTIVE]: new Set(),
+      [ControlMessageTypes.MOVIE_BUFFER_LOW]: new Set(),
+      [ControlMessageTypes.MOVIE_ERROR]: new Set(),
+      [ControlMessageTypes.MOVIE_READY]: new Set(),
     },
     chat: {
       [ChatMessageTypes.MESSAGE]: new Set(),
@@ -45,10 +48,6 @@ export const PeerProvider = ({ children }) => {
     },
     movie: {
       [MovieMessageTypes.CHUNK]: new Set(),
-      [MovieMessageTypes.METADATA]: new Set(),
-      [MovieMessageTypes.BUFFER_STATUS]: new Set(),
-      [MovieMessageTypes.ERROR]: new Set(),
-      [MovieMessageTypes.READY]: new Set(),
     },
   });
 
@@ -67,11 +66,11 @@ export const PeerProvider = ({ children }) => {
         return;
       }
 
-      console.log(`Registering handler for ${channelType}:${messageType}`);
+      //console.log(`Registering handler for ${channelType}:${messageType}`);
       messageHandlers[channelType][messageType].add(handler);
 
       return () => {
-        console.log(`Unregistering handler for ${channelType}:${messageType}`);
+        //console.log(`Unregistering handler for ${channelType}:${messageType}`);
         messageHandlers[channelType][messageType].delete(handler);
       };
     },
@@ -92,28 +91,35 @@ export const PeerProvider = ({ children }) => {
 
       channel.onmessage = (event) => {
         try {
-          const message = JSON.parse(event.data);
-          if (!message.type) {
-            console.error("Message missing type:", message);
-            return;
-          }
-
-          const handlers = messageHandlers[channel.label][message.type];
-          if (!handlers) {
-            console.error(`No handlers for message type: ${message.type}`);
-            return;
-          }
-
-          handlers.forEach((handler) => {
-            try {
-              handler(message.payload);
-            } catch (err) {
-              console.error(
-                `Error in ${channel.label}:${message.type} handler:`,
-                err
-              );
+          if (channel.label === "movie") {
+            // Handle binary movie chunks directly
+            const handlers = messageHandlers.movie[MovieMessageTypes.CHUNK];
+            handlers.forEach((handler) => handler(event.data));
+          } else {
+            // Handle JSON messages for control and chat
+            const message = JSON.parse(event.data);
+            if (!message.type) {
+              console.error("Message missing type:", message);
+              return;
             }
-          });
+
+            const handlers = messageHandlers[channel.label][message.type];
+            if (!handlers) {
+              console.error(`No handlers for message type: ${message.type}`);
+              return;
+            }
+
+            handlers.forEach((handler) => {
+              try {
+                handler(message.payload);
+              } catch (err) {
+                console.error(
+                  `Error in ${channel.label}:${message.type} handler:`,
+                  err
+                );
+              }
+            });
+          }
         } catch (err) {
           console.error("Error processing message:", err);
         }
@@ -317,12 +323,12 @@ export const PeerProvider = ({ children }) => {
         console.error(`Invalid chat message type: ${type}`);
         return;
       }
-  
+
       if (chatChannel?.readyState === "open") {
         const message = {
           type,
           payload,
-          timestamp: Date.now()
+          timestamp: Date.now(),
         };
         chatChannel.send(JSON.stringify(message));
       }
@@ -348,7 +354,7 @@ export const PeerProvider = ({ children }) => {
         console.log("User connected, creating offer");
         setRemoteUser(user);
         const offer = await createOffer(localStream);
-        socket.emit("offer", { offer,user :localUser });
+        socket.emit("offer", { offer, user: localUser });
       } catch (err) {
         console.error("Error creating offer:", err);
       }

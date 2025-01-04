@@ -1,135 +1,428 @@
-// src/components/room/movieplayer.jsx
+// movieplayer.jsx
 import PropTypes from "prop-types";
-import { forwardRef, useImperativeHandle, useEffect, useState, useRef } from "react";
+import {
+  forwardRef,
+  useImperativeHandle,
+  useEffect,
+  useState,
+  useRef,
+  useCallback,
+  useMemo,
+  memo,
+} from "react";
+import { movieServices } from "../../services/movieServices";
+import { useBufferManager } from "../hooks/useBufferManager";
+import { usePeer } from "../../contexts/peerContext";
+import {
+  MovieMessageTypes,
+  ControlMessageTypes,
+} from "../../configs/peerConfig";
 import { Box, CircularProgress, Alert } from "@mui/material";
 
-const MoviePlayer = forwardRef(
-  (
-    {
-      roomId,
-      isPlaying,
-      onPlayingChange,
-      onProgressChange,
-    },
-    ref
-  ) => {
+const CHUNK_SIZE = 64 * 1024; // 64KB chunks
+
+const useMovieOperations = (bufferManager, peerContext) => {
+  // Buffer operations facade
+  const bufferOperations = useMemo(
+    () => ({
+      addChunk: bufferManager.operations.addChunk,
+      removeChunk: bufferManager.operations.removeChunk,
+      initialize: bufferManager.initialize,
+      controlPlayback: bufferManager.controlPlayback,
+      bufferHealth: bufferManager.bufferHealth,
+    }),
+    [bufferManager.operations]
+  );
+
+  // Peer operations facade
+  const peerOperations = useMemo(
+    () => ({
+      send: {
+        movie: peerContext.sendMovieData,
+        control: peerContext.sendControl,
+      },
+      register: {
+        movie: peerContext.registerMovieHandler,
+        control: peerContext.registerControlHandler,
+      },
+      channels: {
+        movie: peerContext.movieChannel,
+      },
+    }),
+    [peerContext]
+  );
+
+  return {
+    buffer: bufferOperations,
+    peer: peerOperations,
+  };
+};
+
+const MoviePlayer = memo(
+  forwardRef(({ roomId, isPlaying, onPlayingChange }, ref) => {
+    // Core refs
     const videoRef = useRef(null);
+    const mediaSourceRef = useRef(null);
+    const sourceBufferRef = useRef(null);
+    const fileRef = useRef(null);
+    const cleanupRef = useRef(null);
+    const streamingCurrentlyRef = useRef(false);
+
+    // Streaming state
     const [isLoading, setIsLoading] = useState(false);
     const [error, setError] = useState(null);
-    const [progress, setProgress] = useState(0);
+    const [isLeader, setIsLeader] = useState(false);
 
-    useEffect(() => {
-      if (videoRef.current) {
-        if (isPlaying) {
-          videoRef.current.play();
-        } else {
-          videoRef.current.pause();
-        }
-      }
-    }, [isPlaying]);
+    const { buffer, peer } = useMovieOperations(useBufferManager(), usePeer());
 
-    // Expose methods with error handling
-    useImperativeHandle(ref, () => ({
-      handlePlaybackToggle: () => {
-        try {
-          if (videoRef.current) {
-            if (videoRef.current.paused) {
-              videoRef.current.play();
-            } else {
-              videoRef.current.pause();
+    const handlePlay = useCallback(
+      (timestamp) => {
+        const timeUntilStart = timestamp - Date.now();
+
+        // Schedule synchronized playback
+        if (timeUntilStart > 0) {
+          setTimeout(() => {
+            if (videoRef.current) {
+              try {
+                // Start buffer consumption
+                buffer.controlPlayback(true);
+
+                // Start video playback
+                videoRef.current
+                  .play()
+                  .then(() => {
+                    console.log("Playback started successfully");
+                    streamingCurrentlyRef.current = true;
+                    onPlayingChange(true);
+                  })
+                  .catch((err) => {
+                    console.error("Playback failed:", err);
+                    // Stop buffer consumption if video playback fails
+                    buffer.controlPlayback(false);
+                    streamingCurrentlyRef.current = false;
+                    onPlayingChange(false);
+                    setError("Failed to start playback");
+                  });
+              } catch (e) {
+                console.log("Error in starting playback", e);
+              }
             }
-            onPlayingChange?.(!videoRef.current.paused);
-          }
-        } catch (err) {
-          console.error("Playback toggle failed:", err);
-          setError("Failed to toggle playback");
+          }, timeUntilStart);
         }
       },
-      handleSeek: (time) => {
+      [buffer, onPlayingChange]
+    );
+
+    // Callbacks defined before buffer manager initialization
+    const handleBufferLow = useCallback(
+      ({ availableSpace }) => {
+        if (!isLeader) {
+          peer.send.control(ControlMessageTypes.MOVIE_BUFFER_LOW, {
+            availableSpace,
+            timestamp: Date.now(),
+          });
+        }
+      },
+      [isLeader, peer.send.control]
+    );
+
+    const handleReadyForPlayback = useCallback(() => {
+      if (!isLeader && !streamingCurrentlyRef.current) {
+        const startTime = Date.now() + 1000; // Define startTime here
+        peer.send.control(ControlMessageTypes.MOVIE_ISPLAYING, {
+          timestamp: startTime,
+        });
+        handlePlay(startTime); // Pass the same startTime to handlePlay
+      }
+    }, [isLeader, peer, handlePlay]);
+
+    const bufferManagerOptions = useMemo(
+      () => ({
+        onBufferLow: handleBufferLow,
+        onReadyForPlayback: handleReadyForPlayback,
+      }),
+      [handleBufferLow, handleReadyForPlayback]
+    );
+
+    console.log("MoviePlayer re rendered");
+
+    // Core setup - Initialize MediaSource
+    const initializeMediaSource = useCallback(
+      async (file) => {
+        if (!videoRef.current) throw new Error("No video element");
+
         try {
-          if (videoRef.current) {
-            const duration = videoRef.current.duration;
-            videoRef.current.currentTime = (time / 100) * duration;
-          }
+          const { mediaSource, sourceBuffer, cleanup } =
+            await movieServices.initializeMediaSource(videoRef.current, file);
+
+          mediaSourceRef.current = mediaSource;
+          sourceBufferRef.current = sourceBuffer;
+          cleanupRef.current = cleanup;
+
+          // Initialize buffer manager with source buffer
+          buffer.initialize(sourceBuffer, bufferManagerOptions);
+
+          return sourceBuffer;
         } catch (err) {
-          console.error("Seek failed:", err);
-          setError("Failed to seek video");
+          console.error("MediaSource init error:", err);
+          throw new Error("Failed to initialize player");
         }
       },
+      [buffer, bufferManagerOptions]
+    );
+
+    // Handle Sending Chunks - Leader
+    const handleChunkSend = useCallback(
+      (availableSpace) => {
+        if (!isLeader || !fileRef.current || !peer.channels.movie) return;
+
+        try {
+          const file = fileRef.current;
+          const maxChunks = Math.floor(availableSpace / CHUNK_SIZE);
+          let chunksSent = 0;
+          let isPaused = false;
+
+          // Track current position in file
+          const offset = fileRef.current.streamOffset || 0;
+
+          const readNextChunk = () => {
+            if (
+              isPaused ||
+              chunksSent >= maxChunks ||
+              offset + chunksSent * CHUNK_SIZE >= file.size
+            ) {
+              fileRef.current.streamOffset = offset + chunksSent * CHUNK_SIZE;
+              return;
+            }
+
+            const chunk = file.slice(
+              offset + chunksSent * CHUNK_SIZE,
+              offset + chunksSent * CHUNK_SIZE + CHUNK_SIZE
+            );
+            reader.readAsArrayBuffer(chunk);
+          };
+
+          const reader = new FileReader();
+          reader.onload = async (e) => {
+            let bufferDrainHandler;
+            try {
+              if (
+                peer.channels.movie.bufferedAmount >
+                peer.channels.movie.bufferedAmountLowThreshold
+              ) {
+                isPaused = true;
+                await new Promise((resolve) => {
+                  bufferDrainHandler = () => {
+                    peer.channels.movie.removeEventListener(
+                      "bufferedamountlow",
+                      bufferDrainHandler
+                    );
+                    resolve();
+                  };
+                  peer.channels.movie.addEventListener(
+                    "bufferedamountlow",
+                    bufferDrainHandler
+                  );
+                });
+                isPaused = false;
+              }
+              const chunkData = e.target.result;
+              // Add to local buffer first
+              await buffer.addChunk({
+                sequence: fileRef.current.sequence,
+                size: chunkData.byteLength,
+                data: chunkData,
+              });
+
+              const message = movieServices.createChunkMessage(
+                fileRef.current.sequence++,
+                chunkData,
+                offset + chunksSent * CHUNK_SIZE >= file.size
+              );
+
+              peer.send.movie(message);
+              chunksSent++;
+              readNextChunk();
+            } catch (err) {
+              if (err.message?.includes("send queue is full")) {
+                isPaused = true;
+                await new Promise((resolve) => {
+                  bufferDrainHandler = () => {
+                    peer.channels.movie.removeEventListener(
+                      "bufferedamountlow",
+                      bufferDrainHandler
+                    );
+                    resolve();
+                  };
+                  peer.channels.movie.addEventListener(
+                    "bufferedamountlow",
+                    bufferDrainHandler
+                  );
+                });
+                isPaused = false;
+                readNextChunk();
+              } else {
+                throw err;
+              }
+            } finally {
+              // Cleanup any lingering listeners
+              if (bufferDrainHandler) {
+                peer.channels.movie.removeEventListener(
+                  "bufferedamountlow",
+                  bufferDrainHandler
+                );
+              }
+            }
+          };
+
+          fileRef.current.sequence = fileRef.current.sequence || 0;
+          readNextChunk();
+        } catch (err) {
+          console.error("Streaming error:", err);
+          setError("Failed to stream video");
+        }
+      },
+      [isLeader, peer]
+    );
+
+    // Handle incoming chunks - Viewer
+    const handleChunkReceived = useCallback(
+      async (data) => {
+        if (isLeader) return;
+
+        try {
+          const chunk = movieServices.parseChunkMessage(data);
+          //console.log("Received Chunk", chunk.sequence);
+          await buffer.addChunk({
+            sequence: chunk.sequence,
+            size: chunk.size,
+            data: chunk.data,
+          });
+        } catch (err) {
+          console.error("Chunk processing error:", err);
+          setError("Failed to process video chunk");
+        }
+      },
+      [isLeader, buffer]
+    );
+
+    // Message Handlers
+    useEffect(() => {
+      // Playback handler for sender
+      const handlePlayback = ({ timestamp }) => {
+        handlePlay(timestamp);
+      };
+
+      // Register playback handler for both leader and viewer
+      const playbackCleanup = peer.register.control(
+        ControlMessageTypes.MOVIE_ISPLAYING,
+        handlePlayback
+      );
+
+      if (isLeader) {
+        // Leader specific handlers
+        const readyCleanup = peer.register.control(
+          ControlMessageTypes.MOVIE_READY,
+          ({ availableSpace }) => {
+            handleChunkSend(availableSpace);
+          }
+        );
+
+        const bufferLowCleanup = peer.register.control(
+          ControlMessageTypes.MOVIE_BUFFER_LOW,
+          ({ availableSpace }) => {
+            handleChunkSend(availableSpace);
+          }
+        );
+
+        return () => {
+          readyCleanup();
+          bufferLowCleanup();
+          playbackCleanup();
+        };
+      } else {
+        // Viewer specific handlers
+        const chunkCleanup = peer.register.movie(
+          MovieMessageTypes.CHUNK,
+          handleChunkReceived
+        );
+
+        return () => {
+          chunkCleanup();
+          playbackCleanup();
+        };
+      }
+    }, [
+      isLeader,
+      peer.register,
+      handleChunkSend,
+      handleChunkReceived,
+      videoRef,
+      onPlayingChange,
+    ]);
+
+    // File Upload Handler
+    useImperativeHandle(ref, () => ({
       handleFileUpload: async (file) => {
         try {
-          const url = URL.createObjectURL(file);
-          videoRef.current.src = url;
+          setIsLoading(true);
+          setError(null);
+
+          fileRef.current = file;
+          await initializeMediaSource(file);
+          setIsLeader(true);
+
+          // Notify peer about movie
+          peer.send.control(ControlMessageTypes.MOVIE_ISLOADED, {
+            name: file.name,
+            type: file.type,
+            size: file.size,
+            timestamp: Date.now(),
+          });
         } catch (err) {
-          console.error("File upload failed:", err);
-          setError("Failed to upload video file");
-        }
-      },
-      handleFastForward: () => {
-        try {
-          if (!videoRef.current) return;
-          const newTime = Math.min(
-            videoRef.current.currentTime + 10,
-            videoRef.current.duration
-          );
-          videoRef.current.currentTime = newTime;
-        } catch (err) {
-          console.error("Fast forward failed:", err);
-          setError("Failed to fast forward");
-        }
-      },
-      handleRewind: () => {
-        try {
-          if (!videoRef.current) return;
-          const newTime = Math.max(videoRef.current.currentTime - 10, 0);
-          videoRef.current.currentTime = newTime;
-        } catch (err) {
-          console.error("Rewind failed:", err);
-          setError("Failed to rewind");
+          console.error("Upload error:", err);
+          setError("Failed to upload video");
+          setIsLeader(false);
+          fileRef.current = null;
+        } finally {
+          setIsLoading(false);
         }
       },
     }));
 
-    const handleTimeUpdate = () => {
-      if (!videoRef.current?.duration) return;
-      const currentProgress = (videoRef.current.currentTime / videoRef.current.duration) * 100;
-      setProgress(currentProgress);
-      onProgressChange?.(currentProgress);
-    };
-
-    const handleLoadedMetadata = () => {
-      if (!videoRef.current) return;
-      onProgressChange?.(0);
-    };
-
-    const handleVideoError = (e) => {
-      const error = e.target.error;
-      switch (error?.code) {
-        case 1:
-          setError("Video playback aborted");
-          break;
-        case 2:
-          setError("Network error while loading video");
-          break;
-        case 3:
-          setError("Video decoding error");
-          break;
-        case 4:
-          setError("Video format not supported");
-          break;
-        default:
-          setError("An error occurred while playing video");
-      }
-    };
-
+    // Viewer setup handler
     useEffect(() => {
-      if (error) {
-        const timer = setTimeout(() => {
-          setError(null);
-        }, 5000);
-        return () => clearTimeout(timer);
+      if (!isLeader) {
+        const setupViewer = peer.register.control(
+          ControlMessageTypes.MOVIE_ISLOADED,
+          async (payload) => {
+            try {
+              setIsLoading(true);
+              const mockFile = new File([], payload.name, {
+                type: payload.type,
+                lastModified: payload.timestamp,
+              });
+
+              await initializeMediaSource(mockFile);
+
+              // Get current available space from buffer health
+              const health = buffer.bufferHealth;
+              peer.send.control(ControlMessageTypes.MOVIE_READY, {
+                availableSpace: health.AvailableSpace,
+                timestamp: Date.now(),
+              });
+            } catch (err) {
+              console.error("Viewer setup error:", err);
+              setError("Failed to initialize player");
+            } finally {
+              setIsLoading(false);
+            }
+          }
+        );
+
+        return () => setupViewer();
       }
-    }, [error]);
+    }, [isLeader, peer.register.control, initializeMediaSource, buffer]);
 
     return (
       <Box
@@ -168,20 +461,20 @@ const MoviePlayer = forwardRef(
           style={{ width: "100%", height: "100%", objectFit: "contain" }}
           playsInline
           aria-label="Movie player"
-          onTimeUpdate={handleTimeUpdate}
-          onLoadedMetadata={handleLoadedMetadata}
-          onError={handleVideoError}
+          onError={(e) => {
+            console.error("Video error:", e);
+            setError("Video playback error occurred");
+          }}
         />
       </Box>
     );
-  }
+  })
 );
 
 MoviePlayer.propTypes = {
   roomId: PropTypes.string.isRequired,
-  isPlaying: PropTypes.bool,
-  onPlayingChange: PropTypes.func,
-  onProgressChange: PropTypes.func,
+  isPlaying: PropTypes.bool.isRequired,
+  onPlayingChange: PropTypes.func.isRequired,
 };
 
 MoviePlayer.displayName = "MoviePlayer";

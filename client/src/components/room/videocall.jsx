@@ -1,20 +1,121 @@
 import { useState, useRef, useEffect } from "react";
 import { Box } from "@mui/material";
-import {usePeer} from "../../contexts/peerContext";
+import { usePeer } from "../../contexts/peerContext";
 import { useSnackbar } from "notistack";
 import roomServices from "../../services/roomServices";
 import VideocamOffIcon from "@mui/icons-material/VideocamOff";
 
-const VideoCall = ({ roomId, isMicOn, isVideoOn, isMovieModeActive,onInitialized }) => {
+const VideoCall = ({
+  roomId,
+  isMicOn,
+  isVideoOn,
+  isMovieModeActive,
+  onInitialized,
+}) => {
   const { enqueueSnackbar } = useSnackbar();
   const localVideoRef = useRef(null);
   const remoteVideoRef = useRef(null);
   const pipRemoteVideoRef = useRef(null);
-  const initRef = useRef(false); 
-  
-  const { setLocalStream, remoteStream } = usePeer();
+  const initRef = useRef(false);
 
+  const { setLocalStream, remoteStream, peerConnection } = usePeer();
 
+  useEffect(() => {
+    const handleAudioToggle = async () => {
+      const stream = localVideoRef.current?.srcObject;
+      if (!stream) return;
+
+      try {
+        // Stop existing audio tracks
+        stream.getAudioTracks().forEach((track) => {
+          track.stop();
+          stream.removeTrack(track);
+        });
+
+        if (isMicOn) {
+          // Reinitialize audio if turning on
+          const { stream: audioStream, error } =
+            await roomServices.reinitializeTrack("audio");
+          if (error) {
+            enqueueSnackbar(error, { variant: "error" });
+            return;
+          }
+
+          // Add new audio track to stream
+          audioStream.getAudioTracks().forEach((track) => {
+            stream.addTrack(track);
+          });
+
+          // Update peer connection
+          if (peerConnection) {
+            const sender = peerConnection
+              .getSenders()
+              .find((s) => s.track?.kind === "audio");
+            if (sender) {
+              sender.replaceTrack(audioStream.getAudioTracks()[0]);
+            }
+          }
+        }
+
+        // Update local stream reference
+        setLocalStream(stream);
+      } catch (err) {
+        console.error("Audio toggle error:", err);
+        enqueueSnackbar("Failed to toggle microphone", { variant: "error" });
+      }
+    };
+
+    handleAudioToggle();
+  }, [isMicOn, peerConnection, setLocalStream, enqueueSnackbar]);
+  useEffect(() => {
+    const handleVideoToggle = async () => {
+      const stream = localVideoRef.current?.srcObject;
+      if (!stream) return;
+
+      try {
+        // Stop existing video tracks
+        stream.getVideoTracks().forEach((track) => {
+          track.stop();
+          stream.removeTrack(track);
+        });
+
+        if (isVideoOn) {
+          // Reinitialize video if turning on
+          const { stream: videoStream, error } =
+            await roomServices.reinitializeTrack("video");
+          if (error) {
+            enqueueSnackbar(error, { variant: "error" });
+            return;
+          }
+
+          // Add new video track to stream
+          videoStream.getVideoTracks().forEach((track) => {
+            stream.addTrack(track);
+          });
+
+          // Update peer connection
+          if (peerConnection) {
+            const sender = peerConnection
+              .getSenders()
+              .find((s) => s.track?.kind === "video");
+            if (sender) {
+              sender.replaceTrack(videoStream.getVideoTracks()[0]);
+            }
+          }
+        }
+
+        // Update local stream reference
+        setLocalStream(stream);
+      } catch (err) {
+        console.error("Video toggle error:", err);
+        enqueueSnackbar("Failed to toggle camera", { variant: "error" });
+      }
+    };
+
+    handleVideoToggle();
+  }, [isVideoOn, peerConnection, setLocalStream, enqueueSnackbar]);
+
+  //Initialize remote stream
   useEffect(() => {
     if (remoteStream) {
       if (remoteVideoRef.current) {
@@ -33,7 +134,7 @@ const VideoCall = ({ roomId, isMicOn, isVideoOn, isMovieModeActive,onInitialized
         console.log("Media already initialized");
         return;
       }
-       
+
       try {
         const { stream, error } = await roomServices.initializeUserMedia();
 
@@ -51,7 +152,6 @@ const VideoCall = ({ roomId, isMicOn, isVideoOn, isMovieModeActive,onInitialized
         // Only notify parent after successful initialization
         initRef.current = true; // Mark as initialized using ref
         onInitialized();
-
       } catch (err) {
         console.error("Failed to initialize media:", err);
         enqueueSnackbar("Failed to access media devices", { variant: "error" });

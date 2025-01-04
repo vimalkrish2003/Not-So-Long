@@ -7,10 +7,13 @@ export const RTC_CONFIG = {
   };
   
   export const ControlMessageTypes = {
-    MOVIE_ISPLAYING: 'MOVIE_ISPLAYING',
-    MOVIE_SEEK: 'MOVIE_SEEK',
-    MOVIE_ISLOADED: 'MOVIE_LOADED',
     MOVIE_MODE_ISACTIVE: 'MOVIE_MODE_ISACTIVE',
+    MOVIE_ISLOADED: 'MOVIE_LOADED',
+    MOVIE_READY: 'MOVIE_READY'  ,
+    MOVIE_ISPLAYING: 'MOVIE_ISPLAYING',
+    MOVIE_SEEK: 'MOVIE_SEEK', 
+    MOVIE_BUFFER_LOW: 'MOVIE_BUFFER_LOW', 
+    MOVIE_ERROR: 'MOVIE_ERROR',        
   };
 
   export const ChatMessageTypes = {
@@ -20,11 +23,7 @@ export const RTC_CONFIG = {
   };
 
   export const MovieMessageTypes = {
-    CHUNK: 'CHUNK',              // Movie data chunk
-    METADATA: 'METADATA',        // Movie file info (size, type, etc)
-    BUFFER_STATUS: 'BUFFER',     // Buffering status
-    ERROR: 'ERROR',              // Playback errors
-    READY: 'READY'              // Ready to receive/play
+    CHUNK: 'CHUNK',              // Only raw movie data chunks
   };
 
  

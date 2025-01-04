@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback ,useEffect} from "react";
+import { useState, useRef, useCallback, useEffect } from "react";
 import { useParams } from "react-router-dom";
 import { Box, Slide, Paper, IconButton, Stack, Slider } from "@mui/material";
 import { useAuth } from "../../contexts/authUserContext";
@@ -52,12 +52,12 @@ const RoomPage = () => {
   const toggleMic = () => setIsMicOn((prev) => !prev);
   const toggleVideo = () => setIsVideoOn((prev) => !prev);
   const toggleMovieMode = useCallback(() => {
-    setIsMovieModeActive(prev => {
+    setIsMovieModeActive((prev) => {
       const newState = !prev;
       // Send update to peer after state change
       sendControl(ControlMessageTypes.MOVIE_MODE_ISACTIVE, {
         isActive: newState,
-        timestamp: Date.now()
+        timestamp: Date.now(),
       });
       return newState;
     });
@@ -82,10 +82,9 @@ const RoomPage = () => {
     };
   }, [roomId, user, location?.state, enqueueSnackbar]);
 
-
   useEffect(() => {
     const cleanup = registerControlHandler(
-      ControlMessageTypes.MOVIE_MODE_ISACTIVE, 
+      ControlMessageTypes.MOVIE_MODE_ISACTIVE,
       (payload) => {
         console.log("Received movie mode update:", payload);
         setIsMovieModeActive(payload.isActive);
@@ -95,17 +94,15 @@ const RoomPage = () => {
     return cleanup;
   }, [registerControlHandler]);
 
-
-
   const handleVideoComponentInitialized = useCallback(() => {
     if (roomId && user) {
-      console.log("Emitting User Joined")
+      console.log("Emitting User Joined");
       socket.emit("user-joined", {
         roomId,
         user,
       });
     }
-  }, [ roomId, user,socket]);
+  }, [roomId, user, socket]);
 
   //Old Functions to down
 
@@ -131,24 +128,33 @@ const RoomPage = () => {
     setMovieProgress(value);
   };
 
-  const handleUploadMovie = () => {
+  const handleUploadMovie = useCallback(() => {
     const input = document.createElement("input");
     input.type = "file";
-    input.accept = "video/*";
+    input.accept = "video/mp4";
 
-    input.onchange = (e) => {
+    input.onchange = async (e) => {
       const file = e.target.files?.[0];
       if (!file) return;
 
       if (!file.type.startsWith("video/")) {
+        enqueueSnackbar("Please select a valid video file", {
+          variant: "error",
+        });
         return;
       }
 
-      setIsMovieUploaded(true);
+      try {
+        await moviePlayerRef.current?.handleFileUpload(file);
+        setIsMovieUploaded(true);
+      } catch (err) {
+        console.error("Movie upload error:", err);
+        enqueueSnackbar("Failed to upload video", { variant: "error" });
+      }
     };
 
     input.click();
-  };
+  }, [enqueueSnackbar]);
 
   if (isLoading) {
     return (
@@ -175,13 +181,13 @@ const RoomPage = () => {
         />
       </Box>
 
-      {false && (
+      {isMovieModeActive && (
         <Box className={styles.moviePlayer}>
           <MoviePlayer
             ref={moviePlayerRef}
             roomId={roomId}
-            onPlayingChange={setIsMovieUploaded}
             isPlaying={isMoviePlaying}
+            onPlayingChange={setIsMoviePlaying}
           />
         </Box>
       )}
