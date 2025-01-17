@@ -1,44 +1,93 @@
-import api from './apiClient';
+import { socket } from "./socket";
 
 const roomServices = {
-  async createRoom() {
+  // Get user media stream
+  async initializeUserMedia() {
     try {
-      // Only handle HTTP request for room creation
-      const response = await api.post('/room/create');
-      return response.data;
-    } catch (error) {
-      throw this.handleError(error);
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: true,
+        video: true
+      });
+
+      return {
+        stream,
+        error: null
+      };
+    } catch (err) {
+      console.error("Media initialization error:", err);
+      
+      // Handle common media errors
+      let errorMessage = "Failed to access media devices";
+      if (err.name === "NotAllowedError") {
+        errorMessage = "Camera/Microphone access denied";
+      } else if (err.name === "NotFoundError") {
+        errorMessage = "No camera/microphone found";
+      } else if (err.name === "NotReadableError") {
+        errorMessage = "Media device already in use";
+      }
+
+      return {
+        stream: null,
+        error: errorMessage
+      };
     }
   },
 
-  async joinRoom(roomId) {
-    try {
-      // Only handle HTTP request for room joining
-      const response = await api.post(`/room/join/${roomId}`);
-      return response.data;
-    } catch (error) {
-      throw this.handleError(error);
+  // Control media tracks
+  toggleAudioTrack(stream, enabled) {
+    if (stream) {
+      stream.getAudioTracks().forEach(track => {
+        // Enable/disable at hardware level
+        track.enabled = enabled;
+        
+        // Optional: Fully stop track when disabled for complete hardware shutdown
+        if (!enabled) {
+          track.stop();
+        }
+      });
     }
   },
 
-  async leaveRoom(roomId) {
-    try {
-      // Only handle HTTP request for room leaving
-      const response = await api.post(`/room/leave/${roomId}`);
-      return response.data;
-    } catch (error) {
-      throw this.handleError(error);
+  toggleVideoTrack(stream, enabled) {
+    if (stream) {
+      stream.getVideoTracks().forEach(track => {
+        // Enable/disable at hardware level
+        track.enabled = enabled;
+        
+        // Optional: Fully stop track when disabled for complete hardware shutdown
+        if (!enabled) {
+          track.stop();
+        }
+      });
     }
   },
+    // Add method to reinitialize specific track
+    async reinitializeTrack(type) {
+      try {
+        const constraints = {
+          audio: type === 'audio',
+          video: type === 'video'
+        };
+        
+        const stream = await navigator.mediaDevices.getUserMedia(constraints);
+        return {
+          stream,
+          error: null
+        };
+      } catch (err) {
+        console.error(`Failed to reinitialize ${type} track:`, err);
+        return {
+          stream: null,
+          error: `Failed to reinitialize ${type} device`
+        };
+      }
+    },
 
-  handleError(error) {
-    if (error.response?.status === 404) {
-      return new Error('Room not found');
+  // Cleanup media stream
+  stopMediaStream(stream) {
+    if (stream) {
+      stream.getTracks().forEach(track => track.stop());
     }
-    if (error.response?.status === 403) {
-      return new Error('Not authorized to access room');
-    }
-    return new Error(error.response?.data?.message || 'Server error');
   }
 };
 

@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 import {
   Box,
   TextField,
@@ -8,38 +8,97 @@ import {
   Avatar,
 } from "@mui/material";
 import SendIcon from "@mui/icons-material/Send";
-import { socket } from "../../services/socket";
 import { useAuth } from "../../contexts/authUserContext";
+import { usePeer } from "../../contexts/peerContext";
+import debounce from "lodash/debounce";
+import { ChatMessageTypes } from "../../configs/peerConfig";
 import styles from "./chatInterface.module.css";
 
 const ChatInterface = ({ roomId }) => {
   const { user } = useAuth();
+  const { registerChatHandler, sendChat, remoteUser } = usePeer();
   const [messages, setMessages] = useState([]);
   const [newMessage, setNewMessage] = useState("");
+  const [isTyping, setIsTyping] = useState(false);
+  const [isLocalUserTyping, setIsLocalUserTyping] = useState(false);
   const messagesEndRef = useRef(null);
+  const typingTimerRef = useRef(null);
 
+  // Register message handlers
   useEffect(() => {
-    socket.on("chat-message", (message) => {
-      setMessages((prev) => [...prev, message]);
-    });
+    const messageCleanup = registerChatHandler(
+      ChatMessageTypes.MESSAGE,
+      (payload) => {
+        setMessages((prev) => [
+          ...prev,
+          {
+            roomId,
+            message: payload.content,
+            sender: remoteUser.name,
+            timestamp: payload.timestamp,
+          },
+        ]);
+      }
+    );
 
-    return () => socket.off("chat-message");
-  }, []);
+    const typingCleanup = registerChatHandler(
+      ChatMessageTypes.USER_TYPING,
+      (payload) => {
+        setIsTyping(payload.isTyping);
+      }
+    );
+
+    return () => {
+      messageCleanup();
+      typingCleanup();
+      if (typingTimerRef.current) {
+        clearTimeout(typingTimerRef.current);
+      }
+    };
+  }, [registerChatHandler, roomId, remoteUser]);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages]);
+  }, [messages,isTyping]);
+
+  const notifyStoppedTyping = useCallback(
+    debounce(() => {
+      sendChat(ChatMessageTypes.USER_TYPING, { isTyping: false });
+      setIsLocalUserTyping(false);
+    }, 700),
+    [sendChat]
+  );
+
+  const handleInputChange = (e) => {
+    setNewMessage(e.target.value);
+    if (!isLocalUserTyping) {
+      setIsLocalUserTyping(true);
+      sendChat(ChatMessageTypes.USER_TYPING, { isTyping: true });
+    }
+    notifyStoppedTyping();
+  };
 
   const handleSend = () => {
     if (newMessage.trim()) {
+      setIsLocalUserTyping(false);
+      notifyStoppedTyping.cancel();
+      sendChat(ChatMessageTypes.USER_TYPING, { isTyping: false });
+
       const messageData = {
-        roomId,
-        message: newMessage,
-        sender: user.name,
-        avatar: user.picture,
+        content: newMessage,
         timestamp: new Date().toISOString(),
       };
-      socket.emit("chat-message", messageData);
+
+      sendChat(ChatMessageTypes.MESSAGE, messageData);
+      setMessages((prev) => [
+        ...prev,
+        {
+          roomId,
+          message: newMessage,
+          sender: user.name,
+          timestamp: messageData.timestamp,
+        },
+      ]);
       setNewMessage("");
     }
   };
@@ -54,10 +113,10 @@ const ChatInterface = ({ roomId }) => {
   return (
     <Box className={styles.chatContainer}>
       <Box className={styles.chatHeader}>
-        <Typography variant="subtitle1" sx={{ color: '#fff' }}>Chat Room</Typography>
+        <Typography className={styles.headerText}>Room Chat</Typography>
       </Box>
 
-      <Paper className={`${styles.messageContainer} messageContainer`}>
+      <Box className={styles.messageContainer}>
         {messages.map((msg, i) => (
           <Box
             key={i}
@@ -69,33 +128,60 @@ const ChatInterface = ({ roomId }) => {
           >
             <Box className={styles.messageContent}>
               {msg.sender !== user.name && (
-                <Avatar src={msg.avatar} className={styles.avatar}>
-                  {msg.sender[0]}
+                <Avatar src={remoteUser?.picture} className={styles.avatar}>
+                  {remoteUser?.name?.[0]}
                 </Avatar>
               )}
-              <Box>
+              <Box className={styles.messageBox}>
                 {msg.sender !== user.name && (
                   <Typography variant="caption" className={styles.senderName}>
                     {msg.sender}
                   </Typography>
                 )}
-                <Paper className={`${styles.message} message ${
-                  msg.sender === user.name ? 'sentMessage' : ''
-                }`}>
-                  <Typography sx={{ color: '#fff' }}>{msg.message}</Typography>
+                <Box
+                  className={`${styles.message} ${
+                    msg.sender === user.name ? styles.sentMessage : ""
+                  }`}
+                  elevation={0}
+                >
+                  <Typography className={styles.messageText}>
+                    {msg.message}
+                  </Typography>
                   <Typography variant="caption" className={styles.timestamp}>
                     {new Date(msg.timestamp).toLocaleTimeString([], {
                       hour: "2-digit",
                       minute: "2-digit",
                     })}
                   </Typography>
-                </Paper>
+                </Box>
               </Box>
             </Box>
           </Box>
         ))}
         <div ref={messagesEndRef} />
-      </Paper>
+        {isTyping && (
+          <Box className={`${styles.messageWrapper} ${styles.receivedMessage}`}>
+            <Box className={styles.messageContent}>
+              <Avatar src={remoteUser?.picture} className={styles.avatar}>
+                {remoteUser?.name?.[0]}
+              </Avatar>
+              <Box className={styles.messageBox}>
+                <Typography variant="caption" className={styles.senderName}>
+                  {remoteUser?.name}
+                </Typography>
+                <Box className={`${styles.message} ${styles.typingMessage}`}>
+                  <Typography className={styles.messageText}>
+                    <span className={styles.dotOne}>.</span>
+                    <span className={styles.dotTwo}>.</span>
+                    <span className={styles.dotThree}>.</span>
+                  </Typography>
+                </Box>
+              </Box>
+            </Box>
+          </Box>
+        )}
+      </Box>
+      {/* Add typing indicator here */}
 
       <Box className={styles.inputContainer}>
         <TextField
@@ -103,35 +189,19 @@ const ChatInterface = ({ roomId }) => {
           multiline
           maxRows={4}
           value={newMessage}
-          onChange={(e) => setNewMessage(e.target.value)}
+          onChange={handleInputChange}
           onKeyDown={handleKeyPress}
-          placeholder="Type a message..."
+          placeholder={"Type a message..."}
           variant="outlined"
           size="small"
           className={styles.input}
-          sx={{
-            '& .MuiOutlinedInput-root': {
-              color: '#fff',
-              '& fieldset': {
-                borderColor: 'rgba(255, 255, 255, 0.1)',
-              },
-              '&:hover fieldset': {
-                borderColor: 'rgba(255, 255, 255, 0.3)',
-              },
-              '&.Mui-focused fieldset': {
-                borderColor: 'primary.main',
-              },
-            },
-            '& .MuiInputBase-input::placeholder': {
-              color: 'rgba(255, 255, 255, 0.5)',
-            },
-          }}
         />
         <IconButton
-          color="primary"
           onClick={handleSend}
           disabled={!newMessage.trim()}
-          className={styles.sendButton}
+          className={`${styles.sendButton} ${
+            !newMessage.trim() ? styles.disabled : ""
+          }`}
         >
           <SendIcon />
         </IconButton>
